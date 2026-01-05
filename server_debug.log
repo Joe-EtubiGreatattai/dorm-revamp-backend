@@ -1,0 +1,18 @@
+[33m[nodemon] 3.1.9[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node server.js`[39m
+[dotenv@17.2.3] injecting env (15) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+--- Cloudinary Config Check ---
+Cloud Name: doefjylyu
+API Key: 6534...7713
+API Secret: EXISTS (Masked)
+-------------------------------
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
+Server is running on http://0.0.0.0:5001
+Socket.io is ready for connections
+Local network access: http://192.168.0.130:5001
+Connected to MongoDB
+User connected: Great attai (69590b5570fc5910b9f9092d)
