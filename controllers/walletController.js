@@ -503,7 +503,7 @@ const initializeTransaction = async (req, res) => {
         const params = {
             email: email || req.user.email,
             amount: amount * 100, // Paystack expects kobo
-            callback_url: "http://192.168.0.130:5001/api/wallet/verify-callback"
+            callback_url: "https://dorm-revamp-backend.onrender.com/api/wallet/verify-callback"
             // In a real app, you might handle verification on the frontend or via webhook
         };
 
