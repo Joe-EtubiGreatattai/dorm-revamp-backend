@@ -9,7 +9,9 @@ const {
     likePost,
     sharePost,
     bookmarkPost,
-    getUserPosts
+    getUserPosts,
+    reportPost,
+    notInterested
 } = require('../controllers/postController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -23,5 +25,7 @@ router.delete('/:id', protect, deletePost);
 router.post('/:id/like', protect, likePost);
 router.post('/:id/share', protect, sharePost);
 router.post('/:id/bookmark', protect, bookmarkPost);
+router.post('/:id/report', protect, reportPost);
+router.post('/:id/not-interested', protect, notInterested);
 
 module.exports = router;

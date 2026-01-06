@@ -113,6 +113,24 @@ const createConversation = async (req, res) => {
             return res.status(400).json({ message: 'Recipient ID is required' });
         }
 
+        // Check if either user has blocked the other
+        const [currentUser, recipientUser] = await Promise.all([
+            User.findById(req.user._id),
+            User.findById(recipientId)
+        ]);
+
+        if (!recipientUser) {
+            return res.status(404).json({ message: 'Recipient not found' });
+        }
+
+        if (currentUser.blockedUsers.includes(recipientId)) {
+            return res.status(400).json({ message: 'You have blocked this user' });
+        }
+
+        if (recipientUser.blockedUsers.includes(req.user._id)) {
+            return res.status(400).json({ message: 'You cannot message this user' });
+        }
+
         // Check if conversation already exists between these two
         let conversation = await Conversation.findOne({
             participants: { $all: [req.user._id, recipientId] }
@@ -161,6 +179,20 @@ const sendMessage = async (req, res) => {
 
         const receiverId = conversation.participants.find(p => p.toString() !== req.user._id.toString());
         console.log('🟢 [Backend] Receiver ID:', receiverId);
+
+        // Check for blocks
+        const [sender, receiver] = await Promise.all([
+            User.findById(req.user._id),
+            User.findById(receiverId)
+        ]);
+
+        if (sender.blockedUsers.includes(receiverId)) {
+            return res.status(400).json({ message: 'You have blocked this user' });
+        }
+
+        if (receiver.blockedUsers.includes(req.user._id)) {
+            return res.status(400).json({ message: 'You cannot message this user' });
+        }
 
         console.log('🟢 [Backend] Creating message in database...');
         const message = await Message.create({

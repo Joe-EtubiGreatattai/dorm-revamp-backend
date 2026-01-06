@@ -2,6 +2,7 @@ const MarketItem = require('../models/MarketItem');
 const Order = require('../models/Order');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const { createNotification } = require('./notificationController');
 
 // @desc    Get all market items
 // @route   GET /api/market/items
@@ -28,6 +29,11 @@ const getItems = async (req, res) => {
                 { title: { $regex: search, $options: 'i' } },
                 { description: { $regex: search, $options: 'i' } }
             ];
+        }
+
+        // Filter out blocked users if logged in
+        if (req.user && req.user.blockedUsers && req.user.blockedUsers.length > 0) {
+            query.ownerId = { $nin: req.user.blockedUsers };
         }
 
         const items = await MarketItem.find(query)
@@ -195,6 +201,20 @@ const purchaseItem = async (req, res) => {
         // Update item status
         item.status = 'sold';
         await item.save();
+
+        // Notify Seller
+        try {
+            await createNotification({
+                userId: item.ownerId,
+                fromUserId: req.user._id,
+                type: 'order',
+                title: 'New Order Received',
+                message: `Your item "${item.title}" has been purchased by ${buyer.name} for ₦${item.price.toLocaleString()}. Check your active orders.`,
+                relatedId: order._id.toString()
+            });
+        } catch (err) {
+            console.error('Market purchase notification error:', err);
+        }
 
         res.status(201).json({
             message: 'Purchase successful',

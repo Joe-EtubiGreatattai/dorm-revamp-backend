@@ -71,10 +71,33 @@ const createComment = async (req, res) => {
             }
 
             // Target author for notification
-            io.to(post.userId.toString()).emit('comment:new', {
-                postId,
-                comment: populatedComment
-            });
+            if (post.userId.toString() !== req.user._id.toString()) {
+                const { createNotification } = require('./notificationController');
+                await createNotification({
+                    userId: post.userId,
+                    type: 'comment',
+                    fromUserId: req.user._id,
+                    relatedId: postId,
+                    title: 'New Comment',
+                    message: `${req.user.name} commented on your post: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`
+                });
+            }
+
+            // If it's a reply, also notify the parent comment owner
+            if (parentCommentId) {
+                const parentComment = await Comment.findById(parentCommentId);
+                if (parentComment && parentComment.userId.toString() !== req.user._id.toString() && parentComment.userId.toString() !== post.userId.toString()) {
+                    const { createNotification } = require('./notificationController');
+                    await createNotification({
+                        userId: parentComment.userId,
+                        type: 'comment',
+                        fromUserId: req.user._id,
+                        relatedId: postId,
+                        title: 'New Reply',
+                        message: `${req.user.name} replied to your comment`
+                    });
+                }
+            }
         }
 
         res.status(201).json(populatedComment);

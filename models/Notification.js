@@ -10,7 +10,8 @@ const notificationSchema = new mongoose.Schema({
         type: String,
         enum: ['like', 'comment', 'follow', 'message', 'mention', 'tour', 'order',
             'candidate_application', 'application_approved', 'application_rejected',
-            'vote_cast', 'election_created', 'withdrawal_approved', 'withdrawal_rejected'],
+            'vote_cast', 'election_created', 'withdrawal_approved', 'withdrawal_rejected',
+            'payment_request', 'payment_accepted', 'payment_rejected', 'system', 'share'],
         required: true
     },
 
@@ -24,6 +25,10 @@ const notificationSchema = new mongoose.Schema({
     message: String,
 
     isRead: {
+        type: Boolean,
+        default: false
+    },
+    isActioned: {
         type: Boolean,
         default: false
     },

@@ -11,11 +11,34 @@ const getFeed = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const query = {
-            $or: [
-                { visibility: 'public' },
-                { $and: [{ visibility: 'school' }, { school: req.user.university }] }
+            $and: [
+                {
+                    $or: [
+                        { visibility: 'public' },
+                        { $and: [{ visibility: 'school' }, { school: req.user.university }] }
+                    ]
+                }
             ]
         };
+
+        // Find users who have blocked me OR users I have blocked
+        const usersToExclude = [...(req.user.blockedUsers || [])];
+
+        // Find users who have blocked current user
+        const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).select('_id');
+        usersWhoBlockedMe.forEach(u => {
+            if (!usersToExclude.includes(u._id)) {
+                usersToExclude.push(u._id);
+            }
+        });
+
+        if (usersToExclude.length > 0) {
+            query.$and.push({ userId: { $nin: usersToExclude } });
+        }
+
+        if (req.user.notInterestedPosts && req.user.notInterestedPosts.length > 0) {
+            query.$and.push({ _id: { $nin: req.user.notInterestedPosts } });
+        }
 
         const posts = await Post.find(query)
             .populate('userId', 'name avatar university')
@@ -195,12 +218,15 @@ const likePost = async (req, res) => {
             io.emit('post:updated', normalizedPost);
 
             // Notification for author (only if liked)
-            if (!alreadyLiked) {
-                io.to(post.userId.toString()).emit('post:liked', {
-                    postId: post._id,
-                    likerId: req.user._id,
-                    likerName: req.user.name,
-                    likerAvatar: req.user.avatar
+            if (!alreadyLiked && post.userId.toString() !== req.user._id.toString()) {
+                const { createNotification } = require('./notificationController');
+                await createNotification({
+                    userId: post.userId,
+                    type: 'like',
+                    fromUserId: req.user._id,
+                    relatedId: post._id,
+                    title: 'New Like',
+                    message: `${req.user.name} liked your post`
                 });
             }
         }
@@ -228,6 +254,19 @@ const sharePost = async (req, res) => {
 
         const io = req.app.get('io');
         if (io) io.emit('post:updated', normalizedPost);
+
+        // Notification for author
+        if (post.userId.toString() !== req.user._id.toString()) {
+            const { createNotification } = require('./notificationController');
+            await createNotification({
+                userId: post.userId,
+                type: 'share',
+                fromUserId: req.user._id,
+                relatedId: post._id,
+                title: 'Post Shared',
+                message: `${req.user.name} shared your post`
+            });
+        }
 
         res.json({ sharesCount: post.shares });
     } catch (error) {
@@ -296,6 +335,49 @@ const getUserPosts = async (req, res) => {
     }
 };
 
+const reportPost = async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const post = await Post.findById(req.params.id);
+
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        const Report = require('../models/Report');
+        await Report.create({
+            reporterId: req.user._id,
+            targetId: post._id,
+            targetType: 'post',
+            reason: reason || 'Inappropriate content'
+        });
+
+        post.isReported = true;
+        post.reportCount += 1;
+        await post.save();
+
+        res.json({ message: 'Post reported successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const notInterested = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (!user.notInterestedPosts.includes(req.params.id)) {
+            user.notInterestedPosts.push(req.params.id);
+            await user.save();
+        }
+
+        res.json({ message: 'Target marked as not interested' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getFeed,
     getPost,
@@ -305,5 +387,7 @@ module.exports = {
     likePost,
     sharePost,
     bookmarkPost,
-    getUserPosts
+    getUserPosts,
+    reportPost,
+    notInterested
 };

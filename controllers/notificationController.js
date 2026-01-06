@@ -116,6 +116,32 @@ const registerPushToken = async (req, res) => {
 // Helper function to create notification (called from other controllers)
 const createNotification = async (data) => {
     try {
+        const user = await User.findById(data.userId);
+        if (!user) return;
+
+        // Settings mapping
+        const settingsMap = {
+            'like': 'likes',
+            'comment': 'comments',
+            'follow': 'follows',
+            'message': 'messages',
+            'mention': 'mentions',
+            'order': 'orderUpdates',
+            'election_created': 'electionReminders',
+            'vote_cast': 'electionReminders',
+            'candidate_application': 'electionReminders',
+            'application_approved': 'electionReminders',
+            'application_rejected': 'electionReminders',
+            'share': 'shares'
+            // Default to always true for system or unmapped types if not specified
+        };
+
+        const settingKey = settingsMap[data.type];
+        if (settingKey && user.notificationSettings && user.notificationSettings[settingKey] === false) {
+            console.log(`Notification of type ${data.type} suppressed for user ${user.email} due to settings.`);
+            return null; // Skip creation and push
+        }
+
         const notification = await Notification.create(data);
 
         // Populate and normalize for real-time update
@@ -140,8 +166,7 @@ const createNotification = async (data) => {
         }
 
         // Send Push Notification
-        const user = await User.findById(data.userId);
-        if (user && user.pushTokens && user.pushTokens.length > 0) {
+        if (user.pushTokens && user.pushTokens.length > 0) {
             await sendPushNotification(
                 user.pushTokens,
                 data.title || 'New Notification',

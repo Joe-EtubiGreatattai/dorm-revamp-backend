@@ -1,11 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { getBalance, topUp, withdraw, getTransactions, initializeTransaction, verifyTransaction, verifyTransactionCallback, handlePaystackWebhook, getPendingWithdrawals, approveWithdrawal, rejectWithdrawal } = require('../controllers/walletController');
+const { getBalance, topUp, withdraw, transfer, acceptTransfer, rejectTransfer, getTransactions, initializeTransaction, verifyTransaction, verifyTransactionCallback, handlePaystackWebhook, getPendingWithdrawals, approveWithdrawal, rejectWithdrawal } = require('../controllers/walletController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.get('/balance', protect, getBalance);
 router.post('/topup', protect, topUp);
 router.post('/withdraw', protect, withdraw);
+router.post('/transfer', protect, transfer); // Add transfer route
+router.post('/transfer/:id/accept', protect, acceptTransfer);
+router.post('/transfer/:id/reject', protect, rejectTransfer);
 router.get('/transactions', protect, getTransactions);
 router.post('/initialize', protect, initializeTransaction);
 router.post('/verify', protect, verifyTransaction);

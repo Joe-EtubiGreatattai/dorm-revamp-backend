@@ -24,6 +24,8 @@ const materialSchema = new mongoose.Schema({
         enum: ['pdf', 'doc', 'ppt', 'video']
     },
     fileSize: Number,
+    coverUrl: String,
+    content: String,
 
     category: {
         type: String,

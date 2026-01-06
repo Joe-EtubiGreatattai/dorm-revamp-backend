@@ -24,6 +24,11 @@ const getListings = async (req, res) => {
         }
         if (bedrooms) query.bedrooms = parseInt(bedrooms);
 
+        // Filter out blocked users if logged in
+        if (req.user && req.user.blockedUsers && req.user.blockedUsers.length > 0) {
+            query.ownerId = { $nin: req.user.blockedUsers };
+        }
+
         const listings = await Housing.find(query)
             .populate('ownerId', 'name avatar')
             .sort({ createdAt: -1 })
@@ -341,6 +346,22 @@ const createReview = async (req, res) => {
         }
 
         await listing.save();
+
+        // Notify Owner
+        try {
+            if (listing.ownerId.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    userId: listing.ownerId,
+                    fromUserId: req.user._id,
+                    type: 'system', // Or 'housing' if we add it
+                    title: 'New Review Received',
+                    message: `Your listing "${listing.title}" received a new ${rating}-star review from ${req.user.name}.`,
+                    relatedId: listing._id.toString()
+                });
+            }
+        } catch (err) {
+            console.error('Housing review notification error:', err);
+        }
 
         // Emit socket event for real-time updates
         const io = req.app.get('io');

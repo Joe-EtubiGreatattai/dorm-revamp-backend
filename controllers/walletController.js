@@ -1,6 +1,7 @@
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { createNotification } = require('./notificationController');
 const axios = require('axios'); // For Paystack API
 const crypto = require('crypto');
 
@@ -126,6 +127,244 @@ const withdraw = async (req, res) => {
     }
 };
 
+
+
+// @desc    Transfer funds to another user
+// @route   POST /api/wallet/transfer
+// @access  Private
+const transfer = async (req, res) => {
+    try {
+        const { recipientId, amount, description } = req.body;
+        const senderId = req.user._id;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: 'Invalid amount' });
+        }
+
+        if (recipientId === senderId.toString()) {
+            return res.status(400).json({ message: 'Cannot transfer to yourself' });
+        }
+
+        const sender = await User.findById(senderId);
+        const recipient = await User.findById(recipientId);
+
+        if (!recipient) {
+            return res.status(404).json({ message: 'Recipient not found' });
+        }
+
+        if (sender.walletBalance < amount) {
+            return res.status(400).json({ message: 'Insufficient balance' });
+        }
+
+        // 1. Deduct from sender (Hold funds)
+        sender.walletBalance -= amount;
+        await sender.save();
+
+        // 2. Create Transaction for Sender (Status: pending_acceptance)
+        const senderTx = await Transaction.create({
+            userId: senderId,
+            type: 'transfer_out',
+            amount: -amount,
+            relatedUserId: recipientId,
+            description: description || 'Transfer to ' + recipient.name,
+            status: 'pending_acceptance'
+        });
+
+        // 3. Create Transaction for Recipient (Status: pending_acceptance)
+        // We create this so the recipient has a record to "accept"
+        await Transaction.create({
+            userId: recipientId,
+            type: 'transfer_in',
+            amount: amount,
+            relatedUserId: senderId,
+            description: description || 'Received from ' + sender.name,
+            status: 'pending_acceptance'
+        });
+
+        // 4. Notification for Recipient (Request to Accept)
+        try {
+            await createNotification({
+                userId: recipientId,
+                type: 'payment_request',
+                title: 'Money Received',
+                message: `${sender.name} sent you ₦${amount.toLocaleString()}. Tap here to accept or reject.`,
+                relatedId: senderTx._id,
+                fromUserId: senderId
+            });
+        } catch (err) {
+            console.error('Notification error', err);
+        }
+
+        res.json({
+            message: 'Transfer initiated. Waiting for recipient to accept.',
+            balance: sender.walletBalance,
+            transaction: senderTx
+        });
+
+    } catch (error) {
+        console.error('Transfer error:', error);
+        res.status(500).json({ message: 'Transfer failed', error: error.message });
+    }
+};
+
+// @desc    Accept Transfer
+// @route   POST /api/wallet/transfer/:id/accept
+// @access  Private
+const acceptTransfer = async (req, res) => {
+    try {
+        const senderTxId = req.params.id;
+        const senderTx = await Transaction.findById(senderTxId);
+
+        if (!senderTx || senderTx.status !== 'pending_acceptance') {
+            return res.status(404).json({ message: 'Transaction not found or already processed' });
+        }
+
+        // Verify that the current user is indeed the recipient
+        if (senderTx.relatedUserId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to accept this transfer' });
+        }
+
+        const recipient = await User.findById(req.user._id);
+        const sender = await User.findById(senderTx.userId);
+
+        // Credit Recipient
+        recipient.walletBalance += Math.abs(senderTx.amount); // amount is negative in senderTx
+        await recipient.save();
+
+        // Update Sender Transaction
+        senderTx.status = 'completed';
+        await senderTx.save();
+
+        // Update Recipient Transaction (Find the paired transaction)
+        const recipientTx = await Transaction.findOne({
+            userId: req.user._id,
+            relatedUserId: senderTx.userId,
+            type: 'transfer_in',
+            amount: Math.abs(senderTx.amount),
+            status: 'pending_acceptance'
+        });
+
+        if (recipientTx) {
+            recipientTx.status = 'completed';
+            await recipientTx.save();
+        }
+
+        // Mark payment_request notification as actioned
+        try {
+            await Notification.updateMany(
+                { userId: req.user._id, relatedId: senderTx._id, type: 'payment_request' },
+                { isActioned: true, isRead: true }
+            );
+        } catch (err) {
+            console.error('Error updating notification status:', err);
+        }
+
+        // Notify Sender
+        try {
+            await createNotification({
+                userId: sender._id,
+                type: 'payment_accepted',
+                title: 'Transfer Accepted ✅',
+                message: `${recipient.name} accepted your transfer of ₦${Math.abs(senderTx.amount).toLocaleString()}.`,
+                relatedId: senderTx._id,
+                fromUserId: recipient._id
+            });
+
+            const io = req.app.get('io');
+            if (io) {
+                // Update recipient balance in real-time
+                io.emit('wallet:updated', { userId: recipient._id, balance: recipient.walletBalance });
+            }
+        } catch (err) {
+            console.error('Notification error', err);
+        }
+
+        res.json({ message: 'Transfer accepted', balance: recipient.walletBalance });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Reject Transfer
+// @route   POST /api/wallet/transfer/:id/reject
+// @access  Private
+const rejectTransfer = async (req, res) => {
+    try {
+        const senderTxId = req.params.id;
+        const senderTx = await Transaction.findById(senderTxId);
+
+        if (!senderTx || senderTx.status !== 'pending_acceptance') {
+            return res.status(404).json({ message: 'Transaction not found or already processed' });
+        }
+
+        // Verify that the current user is indeed the recipient
+        if (senderTx.relatedUserId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to reject this transfer' });
+        }
+
+        const sender = await User.findById(senderTx.userId);
+        const recipient = await User.findById(req.user._id);
+
+        // Refund Sender
+        sender.walletBalance += Math.abs(senderTx.amount);
+        await sender.save();
+
+        // Update Sender Transaction
+        senderTx.status = 'rejected';
+        await senderTx.save();
+
+        // Update Recipient Transaction
+        const recipientTx = await Transaction.findOne({
+            userId: req.user._id,
+            relatedUserId: senderTx.userId,
+            type: 'transfer_in',
+            amount: Math.abs(senderTx.amount),
+            status: 'pending_acceptance'
+        });
+
+        if (recipientTx) {
+            recipientTx.status = 'rejected';
+            await recipientTx.save();
+        }
+
+        // Mark payment_request notification as actioned
+        try {
+            await Notification.updateMany(
+                { userId: req.user._id, relatedId: senderTx._id, type: 'payment_request' },
+                { isActioned: true, isRead: true }
+            );
+        } catch (err) {
+            console.error('Error updating notification status:', err);
+        }
+
+        // Notify Sender
+        try {
+            await createNotification({
+                userId: sender._id,
+                type: 'payment_rejected',
+                title: 'Transfer Rejected ❌',
+                message: `${recipient.name} rejected your transfer of ₦${Math.abs(senderTx.amount).toLocaleString()}. Funds have been returned to your wallet.`,
+                relatedId: senderTx._id,
+                fromUserId: recipient._id
+            });
+
+            const io = req.app.get('io');
+            if (io) {
+                // Update sender balance in real-time
+                io.emit('wallet:updated', { userId: sender._id, balance: sender.walletBalance });
+            }
+        } catch (err) {
+            console.error('Notification error', err);
+        }
+
+        res.json({ message: 'Transfer rejected' });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // @desc    Get all pending withdrawals (Admin)
 // @route   GET /api/wallet/admin/withdrawals
 // @access  Private/Admin
@@ -235,7 +474,15 @@ const rejectWithdrawal = async (req, res) => {
 // @access  Private
 const getTransactions = async (req, res) => {
     try {
-        const transactions = await Transaction.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        const { page = 1, limit = 20 } = req.query;
+        const skip = (page - 1) * limit;
+
+        const transactions = await Transaction.find({ userId: req.user._id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit))
+            .populate('relatedUserId', 'name avatar matricNo');
+
         res.json(transactions);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -442,6 +689,9 @@ const handlePaystackWebhook = async (req, res) => {
 module.exports = {
     getBalance,
     topUp,
+    transfer,
+    acceptTransfer,
+    rejectTransfer,
     withdraw,
     getTransactions,
     initializeTransaction,

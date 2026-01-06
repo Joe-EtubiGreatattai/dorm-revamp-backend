@@ -4,6 +4,8 @@ const CBT = require('../models/CBT');
 const CBTResult = require('../models/CBTResult');
 const { cloudinary } = require('../config/cloudinary');
 const OpenAI = require('openai');
+const pdf = require('pdf-parse');
+const streamifier = require('streamifier');
 
 // Predefined faculties for consistent UI
 const PREDEFINED_FACULTIES = [
@@ -48,6 +50,11 @@ const getMaterials = async (req, res) => {
                 { title: { $regex: search, $options: 'i' } },
                 { course: { $regex: search, $options: 'i' } }
             ];
+        }
+
+        // Filter out blocked users if logged in
+        if (req.user && req.user.blockedUsers && req.user.blockedUsers.length > 0) {
+            query.uploaderId = { $nin: req.user.blockedUsers };
         }
 
         const materials = await Material.find(query)
@@ -107,9 +114,14 @@ const uploadMaterial = async (req, res) => {
     console.log('--- Material Upload Started ---');
     try {
         const { title, courseCode, description, category, faculty, department, level } = req.body;
+
+        // Access files from req.files when using upload.fields
+        const file = req.files && req.files['file'] ? req.files['file'][0] : null;
+        const coverPhoto = req.files && req.files['coverPhoto'] ? req.files['coverPhoto'][0] : null;
+
         console.log('Upload Metadata:', { title, courseCode, description, category, faculty, department, level });
 
-        if (!req.file) {
+        if (!file) {
             console.error('Upload Error: No file provided');
             return res.status(400).json({ success: false, message: 'Please upload a file' });
         }
@@ -125,7 +137,6 @@ const uploadMaterial = async (req, res) => {
             return 'pdf';
         };
 
-        // Map category title or id to model enum ['notes', 'past-questions', 'textbook', 'video']
         const mapCategory = (cat) => {
             if (!cat) return 'notes';
             const c = cat.toLowerCase();
@@ -136,30 +147,69 @@ const uploadMaterial = async (req, res) => {
             return 'notes';
         };
 
-        const fileType = mapMimeToType(req.file.mimetype);
+        const fileType = mapMimeToType(file.mimetype);
         const mappedCategory = mapCategory(category);
 
-        console.log('Processed Upload Data:', {
-            originalCategory: category,
-            mappedCategory,
-            originalMime: req.file.mimetype,
-            mappedType: fileType
+        // --- Text Extraction for PDF using buffer ---
+        let extractedText = '';
+        if (fileType === 'pdf' && file.buffer) {
+            try {
+                console.log('Extracting text from PDF buffer...');
+                const pdfData = await pdf(file.buffer);
+                extractedText = pdfData.text;
+                console.log(`[SUCCESS] PDF Text Extracted: ${extractedText.length} characters`);
+            } catch (err) {
+                console.error('Error extracting text from PDF buffer:', err);
+            }
+        }
+
+        // --- Cloudinary Upload Helper (Buffer to Upload Stream) ---
+        const uploadToCloudinary = (buffer, options = {}) => {
+            return new Promise((resolve, reject) => {
+                const uploadStream = cloudinary.uploader.upload_stream(
+                    { folder: 'dorm_revamp', ...options },
+                    (error, result) => {
+                        if (error) return reject(error);
+                        resolve(result);
+                    }
+                );
+                streamifier.createReadStream(buffer).pipe(uploadStream);
+            });
+        };
+
+        // Upload main file
+        console.log('Uploading material to Cloudinary...');
+        const fileUploadResult = await uploadToCloudinary(file.buffer, {
+            resource_type: 'auto',
+            public_id: `${Date.now()}_${file.originalname.split('.')[0].replace(/\s+/g, '_')}`
         });
+
+        // Upload cover photo if exists
+        let coverUploadResult = null;
+        if (coverPhoto && coverPhoto.buffer) {
+            console.log('Uploading cover photo to Cloudinary...');
+            coverUploadResult = await uploadToCloudinary(coverPhoto.buffer, {
+                resource_type: 'image',
+                public_id: `${Date.now()}_cover_${file.originalname.split('.')[0].replace(/\s+/g, '_')}`
+            });
+        }
 
         const materialData = {
             title,
             courseCode,
             description,
             category: mappedCategory,
-            faculty: faculty || 'Engineering', // Default to Engineering if not provided for now
+            faculty: faculty || 'Engineering',
             department,
             level,
             university: req.user.university,
             uploaderId: req.user._id,
-            fileUrl: req.file.path,
-            fileId: req.file.filename,
+            fileUrl: fileUploadResult.secure_url,
+            fileId: fileUploadResult.public_id,
             fileType: fileType,
-            fileSize: req.file.size
+            fileSize: file.size,
+            coverUrl: coverUploadResult ? coverUploadResult.secure_url : null,
+            content: extractedText
         };
 
         const material = await Material.create(materialData);

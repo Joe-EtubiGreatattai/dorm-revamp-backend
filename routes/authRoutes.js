@@ -10,7 +10,10 @@ const {
     forgotPassword,
     resetPassword,
     verifyEmail,
-    getUserProfile
+
+    getUserProfile,
+    searchUsers, // Import searchUsers
+    deleteUser
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -18,6 +21,8 @@ const upload = require('../middleware/uploadMiddleware');
 router.post('/register', upload.single('avatar'), register);
 router.post('/login', login);
 router.get('/me', protect, getMe);
+router.delete('/me', protect, deleteUser); // Add delete route
+router.get('/search', protect, searchUsers); // Add search route
 router.get('/users', getAllUsers);
 router.get('/users/:id', getUserProfile);
 
@@ -41,8 +46,11 @@ router.get('/faculties', getFaculties);
 router.get('/levels', getLevels);
 
 // Follow/Unfollow
-const { followUser, unfollowUser } = require('../controllers/authController');
+const { followUser, unfollowUser, blockUser, unblockUser, getBlockedUsers } = require('../controllers/authController');
+router.get('/blocked', protect, getBlockedUsers);
 router.post('/users/:id/follow', protect, followUser);
 router.post('/users/:id/unfollow', protect, unfollowUser);
+router.post('/users/:id/block', protect, blockUser);
+router.post('/users/:id/unblock', protect, unblockUser);
 
 module.exports = router;

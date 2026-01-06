@@ -63,7 +63,12 @@ const userSchema = new mongoose.Schema({
         likes: { type: Boolean, default: true },
         comments: { type: Boolean, default: true },
         follows: { type: Boolean, default: true },
-        messages: { type: Boolean, default: true }
+        messages: { type: Boolean, default: true },
+        mentions: { type: Boolean, default: true },
+        priceAlerts: { type: Boolean, default: true },
+        orderUpdates: { type: Boolean, default: true },
+        electionReminders: { type: Boolean, default: true },
+        shares: { type: Boolean, default: true }
     },
 
     // Banking
@@ -72,6 +77,22 @@ const userSchema = new mongoose.Schema({
         accountNumber: String,
         accountName: String,
         isDefault: { type: Boolean, default: false }
+    }],
+
+    // Privacy
+    privacySettings: {
+        appLock: { type: Boolean, default: false },
+        onlineStatus: { type: Boolean, default: true },
+        readReceipts: { type: Boolean, default: true }
+    },
+
+    blockedUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    notInterestedPosts: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Post'
     }],
 
     // Online Status
@@ -90,6 +111,27 @@ const userSchema = new mongoose.Schema({
     },
     verificationToken: String,
     verificationTokenExpire: Date,
+
+    // KYC & Identification
+    matricNo: {
+        type: String,
+        // unique: true, // Optional: enforce uniqueness if desired
+    },
+    walletId: {
+        type: String,
+        unique: true,
+    },
+    kycDocument: String, // URL to uploaded ID
+    identityNumber: String, // BVN or NIN
+    identityType: {
+        type: String,
+        enum: ['bvn', 'nin']
+    },
+    kycStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected', 'none'],
+        default: 'none'
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

@@ -56,6 +56,8 @@ app.use('/api/library', require('./routes/libraryRoutes'));
 app.use('/api/elections', require('./routes/electionRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/bugs', require('./routes/bugReportRoutes'));
+app.use('/api/support', require('./routes/supportRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {

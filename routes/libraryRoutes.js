@@ -20,12 +20,17 @@ const {
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
+// Dedicated memory storage for library to allow buffer processing (text extraction)
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const memoryUpload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+
 router.get('/faculties', getFaculties);
 router.get('/materials', getMaterials);
 router.get('/categories', getCategories);
 router.get('/personal', protect, getPersonalLibrary);
 router.get('/materials/:id', getMaterial);
-router.post('/materials', protect, upload.single('file'), uploadMaterial);
+router.post('/materials', protect, memoryUpload.fields([{ name: 'file', maxCount: 1 }, { name: 'coverPhoto', maxCount: 1 }]), uploadMaterial);
 router.put('/materials/:id', protect, updateMaterial);
 router.delete('/materials/:id', protect, deleteMaterial);
 router.post('/materials/:id/save', protect, saveMaterial);

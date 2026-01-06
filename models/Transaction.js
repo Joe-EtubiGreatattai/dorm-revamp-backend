@@ -8,8 +8,12 @@ const transactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['topup', 'withdrawal', 'escrow_hold', 'escrow_release', 'rent_payment', 'rent_receive', 'tour_payment', 'tour_receive'],
+        enum: ['topup', 'withdrawal', 'escrow_hold', 'escrow_release', 'rent_payment', 'rent_receive', 'tour_payment', 'tour_receive', 'transfer_in', 'transfer_out', 'contestant_fee'],
         required: true,
+    },
+    relatedUserId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     },
     amount: {
         type: Number,
@@ -17,7 +21,7 @@ const transactionSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'completed', 'failed'],
+        enum: ['pending', 'completed', 'failed', 'pending_acceptance', 'rejected'],
         default: 'pending',
     },
     paymentMethod: String,

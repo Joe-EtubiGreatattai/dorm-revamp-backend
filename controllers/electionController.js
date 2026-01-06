@@ -4,14 +4,20 @@ const ElectionNews = require('../models/ElectionNews');
 const Vote = require('../models/Vote');
 const CandidateApplication = require('../models/CandidateApplication');
 const Notification = require('../models/Notification');
+const { createNotification } = require('./notificationController');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 
 // @desc    Get all active elections
 // @route   GET /api/elections
 // @access  Public
 const getElections = async (req, res) => {
     try {
-        const elections = await Election.find().sort({ startDate: 1 });
+        let query = {};
+        if (req.user && req.user.blockedUsers && req.user.blockedUsers.length > 0) {
+            query.createdBy = { $nin: req.user.blockedUsers };
+        }
+        const elections = await Election.find(query).sort({ startDate: 1 });
 
         // Add aggregate stats for each election
         const electionsWithStats = elections.map(election => {
@@ -108,7 +114,7 @@ const createElection = async (req, res) => {
         const createdElection = await election.save();
 
         // Notify creator that election is pending review
-        await Notification.create({
+        await createNotification({
             userId: req.user._id,
             type: 'election_created',
             title: 'Election Created!',
@@ -204,12 +210,13 @@ const vote = async (req, res) => {
         // 6. Secondary actions (Notifications & Sockets) - failures here shouldn't block the vote count
         try {
             const populatedUser = await User.findById(originalCand.user).select('name');
-            await Notification.create({
+            await createNotification({
                 userId,
                 type: 'vote_cast',
                 title: 'Vote Recorded!',
                 message: `Your vote for ${populatedUser?.name || 'the candidate'} for the position of ${originalPos.title} has been securely recorded.`,
-                relatedId: election._id
+                relatedId: election._id,
+                fromUserId: req.user._id // Optional but helps normalization
             });
 
             const io = req.app.get('io');
@@ -425,6 +432,15 @@ const applyForPosition = async (req, res) => {
         user.escrowBalance += election.contestantFee;
         await user.save();
 
+        await Transaction.create({
+            userId: user._id,
+            type: 'contestant_fee',
+            amount: election.contestantFee,
+            status: 'completed',
+            paymentMethod: 'wallet',
+            description: `Contestant Fee for ${election.title}`
+        });
+
         // Create application
         const application = await CandidateApplication.create({
             electionId,
@@ -439,12 +455,13 @@ const applyForPosition = async (req, res) => {
         });
 
         // Create notification for admin/election creator
-        await Notification.create({
-            userId: election.createdBy || req.user._id, // Assuming election has createdBy field
+        await createNotification({
+            userId: election.createdBy || req.user._id,
             type: 'candidate_application',
             title: 'New Candidate Application',
             message: `${user.name} applied for ${position.title} in ${election.title}`,
-            relatedId: application._id
+            relatedId: application._id,
+            fromUserId: req.user._id
         });
 
         // Emit socket event
@@ -546,22 +563,24 @@ const approveApplication = async (req, res) => {
         }
 
         // Notify applicant (approved)
-        await Notification.create({
+        await createNotification({
             userId: application.userId._id,
             type: 'application_approved',
             title: 'Application Approved!',
             message: `Your application for ${position.title} in ${election.title} has been approved. You are now a candidate!`,
-            relatedId: election._id
+            relatedId: election._id,
+            fromUserId: req.user._id
         });
 
         // Notify creator about fee release
         if (creator) {
-            await Notification.create({
+            await createNotification({
                 userId: creator._id,
                 type: 'application_approved',
                 title: 'Contestant Fee Received',
                 message: `₦${application.feeAmount.toLocaleString()} contestant fee released to your wallet from ${application.userId.name}'s application`,
-                relatedId: election._id
+                relatedId: election._id,
+                fromUserId: application.userId._id
             });
         }
 
@@ -621,12 +640,13 @@ const rejectApplication = async (req, res) => {
         // Notify applicant (rejected)
         const position = election.positions.id(application.positionId);
 
-        await Notification.create({
+        await createNotification({
             userId: application.userId._id,
             type: 'application_rejected',
             title: 'Application Rejected',
             message: `Your application for ${position.title} in ${election.title} was rejected. Fee refunded to your wallet.${reason ? ` Reason: ${reason}` : ''}`,
-            relatedId: election._id
+            relatedId: election._id,
+            fromUserId: req.user._id
         });
 
         // Socket events
