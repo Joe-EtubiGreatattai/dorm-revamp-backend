@@ -80,6 +80,24 @@ const getPost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
+        // BOLA Check: Visibility and Blocks
+        const isOwner = req.user && post.userId._id.toString() === req.user._id.toString();
+
+        if (!isOwner) {
+            // 1. Check if blocked
+            if (req.user) {
+                const targetUser = await User.findById(post.userId._id);
+                if (targetUser.blockedUsers.includes(req.user._id) || req.user.blockedUsers.includes(post.userId._id)) {
+                    return res.status(403).json({ message: 'Not authorized to view this post' });
+                }
+            }
+
+            // 2. Check Visibility
+            if (post.visibility === 'school' && (!req.user || req.user.university !== post.school)) {
+                return res.status(403).json({ message: 'This post is only visible to students of ' + post.school });
+            }
+        }
+
         const p = post.toObject();
         res.json({ ...p, user: p.userId, userId: p.userId?._id });
     } catch (error) {
@@ -147,10 +165,11 @@ const updatePost = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
-        const { content, images } = req.body;
+        const { content, images, visibility } = req.body;
 
         post.content = content || post.content;
         post.images = images || post.images;
+        post.visibility = visibility || post.visibility;
 
         await post.save();
 
@@ -188,25 +207,23 @@ const deletePost = async (req, res) => {
 // @access  Private
 const likePost = async (req, res) => {
     try {
+        const userId = req.user._id;
         const post = await Post.findById(req.params.id);
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        const alreadyLiked = post.likes.includes(req.user._id);
+        const alreadyLiked = post.likes.includes(userId);
+        const update = alreadyLiked
+            ? { $pull: { likes: userId } }
+            : { $addToSet: { likes: userId } };
 
-        if (alreadyLiked) {
-            post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
-        } else {
-            post.likes.push(req.user._id);
-        }
-
-        await post.save();
-
-        // Fetch populated post for real-time update
-        const updatedPost = await Post.findById(post._id)
-            .populate('userId', 'name avatar university');
+        const updatedPost = await Post.findByIdAndUpdate(
+            req.params.id,
+            update,
+            { new: true }
+        ).populate('userId', 'name avatar university');
 
         const p = updatedPost.toObject();
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
@@ -214,16 +231,14 @@ const likePost = async (req, res) => {
         // Emit real-time events
         const io = req.app.get('io');
         if (io) {
-            // Global update for feed
             io.emit('post:updated', normalizedPost);
 
-            // Notification for author (only if liked)
-            if (!alreadyLiked && post.userId.toString() !== req.user._id.toString()) {
+            if (!alreadyLiked && post.userId.toString() !== userId.toString()) {
                 const { createNotification } = require('./notificationController');
                 await createNotification({
                     userId: post.userId,
                     type: 'like',
-                    fromUserId: req.user._id,
+                    fromUserId: userId,
                     relatedId: post._id,
                     title: 'New Like',
                     message: `${req.user.name} liked your post`
@@ -231,7 +246,7 @@ const likePost = async (req, res) => {
             }
         }
 
-        res.json({ liked: !alreadyLiked, likesCount: post.likes.length });
+        res.json({ liked: !alreadyLiked, likesCount: updatedPost.likes.length });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -242,13 +257,14 @@ const likePost = async (req, res) => {
 // @access  Private
 const sharePost = async (req, res) => {
     try {
-        const post = await Post.findById(req.params.id);
-        if (!post) return res.status(404).json({ message: 'Post not found' });
+        const updatedPost = await Post.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { shares: 1 } },
+            { new: true }
+        ).populate('userId', 'name avatar university');
 
-        post.shares += 1;
-        await post.save();
+        if (!updatedPost) return res.status(404).json({ message: 'Post not found' });
 
-        const updatedPost = await Post.findById(post._id).populate('userId', 'name avatar university');
         const p = updatedPost.toObject();
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
 
@@ -256,19 +272,19 @@ const sharePost = async (req, res) => {
         if (io) io.emit('post:updated', normalizedPost);
 
         // Notification for author
-        if (post.userId.toString() !== req.user._id.toString()) {
+        if (updatedPost.userId.toString() !== req.user._id.toString()) {
             const { createNotification } = require('./notificationController');
             await createNotification({
-                userId: post.userId,
+                userId: updatedPost.userId,
                 type: 'share',
                 fromUserId: req.user._id,
-                relatedId: post._id,
+                relatedId: updatedPost._id,
                 title: 'Post Shared',
                 message: `${req.user.name} shared your post`
             });
         }
 
-        res.json({ sharesCount: post.shares });
+        res.json({ sharesCount: updatedPost.shares });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -279,26 +295,28 @@ const sharePost = async (req, res) => {
 // @access  Private
 const bookmarkPost = async (req, res) => {
     try {
+        const userId = req.user._id;
         const post = await Post.findById(req.params.id);
         if (!post) return res.status(404).json({ message: 'Post not found' });
 
-        const alreadySaved = post.savedBy.includes(req.user._id);
-        if (alreadySaved) {
-            post.savedBy = post.savedBy.filter(id => id.toString() !== req.user._id.toString());
-        } else {
-            post.savedBy.push(req.user._id);
-        }
+        const alreadySaved = post.savedBy.includes(userId);
+        const update = alreadySaved
+            ? { $pull: { savedBy: userId } }
+            : { $addToSet: { savedBy: userId } };
 
-        await post.save();
+        const updatedPost = await Post.findByIdAndUpdate(
+            req.params.id,
+            update,
+            { new: true }
+        ).populate('userId', 'name avatar university');
 
-        const updatedPost = await Post.findById(post._id).populate('userId', 'name avatar university');
         const p = updatedPost.toObject();
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
 
         const io = req.app.get('io');
         if (io) io.emit('post:updated', normalizedPost);
 
-        res.json({ saved: !alreadySaved, savedCount: post.savedBy.length });
+        res.json({ saved: !alreadySaved, savedCount: updatedPost.savedBy.length });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -310,7 +328,17 @@ const bookmarkPost = async (req, res) => {
 const getUserPosts = async (req, res) => {
     try {
         const { tab } = req.query;
-        let query = { userId: req.params.userId };
+        const targetUserId = req.params.userId;
+
+        // BOLA Check: Block status
+        if (req.user) {
+            const targetUser = await User.findById(targetUserId);
+            if (targetUser && (targetUser.blockedUsers.includes(req.user._id) || req.user.blockedUsers.includes(targetUserId))) {
+                return res.status(403).json({ message: 'Access denied due to blocking' });
+            }
+        }
+
+        let query = { userId: targetUserId };
 
         if (tab === 'Media') {
             query.images = { $exists: true, $ne: [] };

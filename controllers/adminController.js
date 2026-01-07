@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const sanitize = require('mongo-sanitize');
 const Order = require('../models/Order');
 const Housing = require('../models/Housing');
 const MarketItem = require('../models/MarketItem');
@@ -39,12 +40,13 @@ const getDashboardStats = async (req, res) => {
 // @access  Private/Admin
 const getAllUsers = async (req, res) => {
     try {
+        const { page: pageQuery, keyword: keywordInput } = sanitize(req.query);
         const pageSize = 20;
-        const page = Number(req.query.page) || 1;
-        const keyword = req.query.keyword
+        const page = Number(pageQuery) || 1;
+        const keyword = keywordInput
             ? {
                 name: {
-                    $regex: req.query.keyword,
+                    $regex: String(keywordInput),
                     $options: 'i',
                 },
             }
@@ -67,9 +69,9 @@ const getAllUsers = async (req, res) => {
 // @access  Private/Admin
 const getAllOrders = async (req, res) => {
     try {
+        const { page: pageQuery, status } = sanitize(req.query);
         const pageSize = 20;
-        const page = Number(req.query.page) || 1;
-        const status = req.query.status;
+        const page = Number(pageQuery) || 1;
 
         const filter = {};
         if (status) {
@@ -153,10 +155,9 @@ const banUser = async (req, res) => {
 // @access  Private/Admin
 const getAllMarketItems = async (req, res) => {
     try {
+        const { page: pageQuery, type, status } = sanitize(req.query);
         const pageSize = 20;
-        const page = Number(req.query.page) || 1;
-        const type = req.query.type;
-        const status = req.query.status;
+        const page = Number(pageQuery) || 1;
 
         const filter = {};
         if (type && type !== 'all') {
@@ -218,9 +219,9 @@ const deleteMarketItem = async (req, res) => {
 // @access  Private/Admin
 const getAllHousingListings = async (req, res) => {
     try {
+        const { page: pageQuery, status } = sanitize(req.query);
         const pageSize = 20;
-        const page = Number(req.query.page) || 1;
-        const status = req.query.status;
+        const page = Number(pageQuery) || 1;
 
         const filter = {};
         if (status && status !== 'all') {
@@ -396,9 +397,9 @@ const deleteElection = async (req, res) => {
 // @access  Private/Admin
 const getAllPosts = async (req, res) => {
     try {
+        const { page: pageQuery, reported } = sanitize(req.query);
         const pageSize = 20;
-        const page = Number(req.query.page) || 1;
-        const reported = req.query.reported; // Filter by reported status
+        const page = Number(pageQuery) || 1;
 
         const filter = {};
         if (reported === 'true') {

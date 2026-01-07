@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const MarketItem = require('../models/MarketItem');
 const Order = require('../models/Order');
 const Transaction = require('../models/Transaction');
@@ -67,9 +68,16 @@ const getItem = async (req, res) => {
             return res.status(404).json({ message: 'Item not found' });
         }
 
-        // Increment views
-        item.views += 1;
-        await item.save();
+        // BOLA Check: Block status
+        if (req.user) {
+            const targetUser = await User.findById(item.ownerId._id);
+            if (targetUser && (targetUser.blockedUsers.includes(req.user._id) || req.user.blockedUsers.includes(targetUser._id))) {
+                return res.status(403).json({ message: 'Access denied due to blocking' });
+            }
+        }
+
+        // Increment views atomically
+        await MarketItem.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
 
         res.json(item);
     } catch (error) {
@@ -157,52 +165,63 @@ const deleteItem = async (req, res) => {
 // @route   POST /api/market/items/:id/purchase
 // @access  Private
 const purchaseItem = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
-        const item = await MarketItem.findById(req.params.id);
+        const item = await MarketItem.findById(req.params.id).session(session);
 
         if (!item) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Item not found' });
         }
 
         if (item.status !== 'available') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Item is not available' });
         }
 
-        const buyer = await User.findById(req.user._id);
+        // ATOMIC UPDATE: Deduct from buyer wallet and add to escrow
+        const buyer = await User.findOneAndUpdate(
+            { _id: req.user._id, walletBalance: { $gte: item.price } },
+            { $inc: { walletBalance: -item.price, escrowBalance: item.price } },
+            { new: true, session }
+        );
 
-        if (buyer.walletBalance < item.price) {
+        if (!buyer) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Insufficient wallet balance' });
         }
 
         // Create order with escrow
-        const order = await Order.create({
+        const order = await Order.create([{
             buyerId: req.user._id,
             sellerId: item.ownerId,
             itemId: item._id,
             amount: item.price,
             escrowAmount: item.price,
             escrowStatus: 'held'
-        });
-
-        // Deduct from buyer wallet and add to escrow
-        buyer.walletBalance -= item.price;
-        buyer.escrowBalance += item.price;
-        await buyer.save();
+        }], { session });
 
         // Create escrow transaction
-        await Transaction.create({
+        await Transaction.create([{
             userId: req.user._id,
             type: 'escrow_hold',
-            amount: item.price,
+            amount: -item.price, // Negative for deduction
             status: 'completed',
-            orderId: order._id
-        });
+            orderId: order[0]._id
+        }], { session });
 
         // Update item status
         item.status = 'sold';
-        await item.save();
+        await item.save({ session });
 
-        // Notify Seller
+        await session.commitTransaction();
+        session.endSession();
+
+        // Secondary actions (Non-blocking)
         try {
             await createNotification({
                 userId: item.ownerId,
@@ -210,18 +229,25 @@ const purchaseItem = async (req, res) => {
                 type: 'order',
                 title: 'New Order Received',
                 message: `Your item "${item.title}" has been purchased by ${buyer.name} for ₦${item.price.toLocaleString()}. Check your active orders.`,
-                relatedId: order._id.toString()
+                relatedId: order[0]._id.toString()
             });
+
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('wallet:updated', { userId: req.user._id, balance: buyer.walletBalance });
+            }
         } catch (err) {
             console.error('Market purchase notification error:', err);
         }
 
         res.status(201).json({
             message: 'Purchase successful',
-            order,
+            order: order[0],
             escrowBalance: buyer.escrowBalance
         });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };

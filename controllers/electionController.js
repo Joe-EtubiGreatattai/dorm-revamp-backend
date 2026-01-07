@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const Election = require('../models/Election');
 const ElectionNews = require('../models/ElectionNews');
@@ -402,47 +403,61 @@ const getCandidate = async (req, res) => {
 // @route   POST /api/elections/:id/positions/:positionId/apply
 // @access  Private
 const applyForPosition = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { id: electionId, positionId } = req.params;
         const { manifesto, media, nickname } = req.body;
         const userId = req.user._id;
 
         // Get election
-        const election = await Election.findById(electionId);
-        if (!election) return res.status(404).json({ message: 'Election not found' });
+        const election = await Election.findById(electionId).session(session);
+        if (!election) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Election not found' });
+        }
 
         // Check if position exists
         const position = election.positions.id(positionId);
-        if (!position) return res.status(404).json({ message: 'Position not found' });
+        if (!position) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Position not found' });
+        }
 
         // Check if user already applied
-        const existingApp = await CandidateApplication.findOne({ electionId, positionId, userId });
+        const existingApp = await CandidateApplication.findOne({ electionId, positionId, userId }).session(session);
         if (existingApp) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'You have already applied for this position' });
         }
 
-        // Check wallet balance
-        const user = await User.findById(userId);
-        if (user.walletBalance < election.contestantFee) {
-            return res.status(400).json({ message: 'Insufficient wallet balance' });
+        // ATOMIC UPDATE: Deduct from wallet and move to escrow
+        const user = await User.findOneAndUpdate(
+            { _id: userId, walletBalance: { $gte: election.contestantFee } },
+            { $inc: { walletBalance: -election.contestantFee, escrowBalance: election.contestantFee } },
+            { new: true, session }
+        );
+
+        if (!user) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Insufficient wallet balance or user not found' });
         }
 
-        // Deduct fee from wallet and move to escrow
-        user.walletBalance -= election.contestantFee;
-        user.escrowBalance += election.contestantFee;
-        await user.save();
-
-        await Transaction.create({
+        await Transaction.create([{
             userId: user._id,
             type: 'contestant_fee',
             amount: election.contestantFee,
             status: 'completed',
             paymentMethod: 'wallet',
             description: `Contestant Fee for ${election.title}`
-        });
+        }], { session });
 
         // Create application
-        const application = await CandidateApplication.create({
+        const application = await CandidateApplication.create([{
             electionId,
             positionId,
             userId,
@@ -452,30 +467,38 @@ const applyForPosition = async (req, res) => {
             feeAmount: election.contestantFee,
             feePaid: true,
             status: 'pending'
-        });
+        }], { session });
 
-        // Create notification for admin/election creator
-        await createNotification({
-            userId: election.createdBy || req.user._id,
-            type: 'candidate_application',
-            title: 'New Candidate Application',
-            message: `${user.name} applied for ${position.title} in ${election.title}`,
-            relatedId: application._id,
-            fromUserId: req.user._id
-        });
+        await session.commitTransaction();
+        session.endSession();
 
-        // Emit socket event
-        const io = req.app.get('io');
-        if (io) {
-            io.emit('application:new', {
-                electionId,
-                positionId,
-                applicationId: application._id
+        // Secondary actions (Non-blocking)
+        try {
+            await createNotification({
+                userId: election.createdBy || req.user._id,
+                type: 'candidate_application',
+                title: 'New Candidate Application',
+                message: `${user.name} applied for ${position.title} in ${election.title}`,
+                relatedId: application[0]._id,
+                fromUserId: req.user._id
             });
+
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('application:new', {
+                    electionId,
+                    positionId,
+                    applicationId: application[0]._id
+                });
+            }
+        } catch (err) {
+            console.error('Non-blocking error:', err);
         }
 
-        res.status(201).json({ message: 'Application submitted successfully', application });
+        res.status(201).json({ message: 'Application submitted successfully', application: application[0] });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -515,86 +538,111 @@ const getApplications = async (req, res) => {
 // @route   PATCH /api/elections/applications/:applicationId/approve
 // @access  Private/Admin
 const approveApplication = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { applicationId } = req.params;
 
-        const application = await CandidateApplication.findById(applicationId)
-            .populate('userId', 'name')
-            .populate('electionId');
+        const application = await CandidateApplication.findById(applicationId).session(session);
 
-        if (!application) return res.status(404).json({ message: 'Application not found' });
+        if (!application) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Application not found' });
+        }
         if (application.status !== 'pending') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Application already processed' });
         }
 
-        // Update application status
-        application.status = 'approved';
-        application.reviewedAt = new Date();
-        application.reviewedBy = req.user._id;
-        await application.save();
-
-        // Add candidate to election position
-        const election = await Election.findById(application.electionId);
+        const election = await Election.findById(application.electionId).session(session);
 
         // Authorization check: User must be election creator or admin
         if (election.createdBy?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Not authorized to approve applications for this election' });
         }
 
+        // 1. Update application status
+        application.status = 'approved';
+        application.reviewedAt = new Date();
+        application.reviewedBy = req.user._id;
+        await application.save({ session });
+
+        // 2. Add candidate to election position
         const position = election.positions.id(application.positionId);
         position.candidates.push({
-            user: application.userId._id,
+            user: application.userId,
             nickname: application.nickname,
             manifesto: application.manifesto,
             votes: 0
         });
-        await election.save();
+        await election.save({ session });
 
-        // Release fee from escrow to election creator balance
-        const applicant = await User.findById(application.userId);
-        applicant.escrowBalance -= application.feeAmount;
-        await applicant.save();
+        // 3. ATOMIC UPDATE: Release fee from applicant escrow
+        const applicant = await User.findOneAndUpdate(
+            { _id: application.userId, escrowBalance: { $gte: application.feeAmount } },
+            { $inc: { escrowBalance: -application.feeAmount } },
+            { new: true, session }
+        );
 
-        // Add to election creator's wallet
-        const creator = await User.findById(election.createdBy);
-        if (creator) {
-            creator.walletBalance += application.feeAmount;
-            await creator.save();
+        if (!applicant) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Integrity error: Escrow balance insufficient for refund/release' });
         }
 
-        // Notify applicant (approved)
-        await createNotification({
-            userId: application.userId._id,
-            type: 'application_approved',
-            title: 'Application Approved!',
-            message: `Your application for ${position.title} in ${election.title} has been approved. You are now a candidate!`,
-            relatedId: election._id,
-            fromUserId: req.user._id
-        });
+        // 4. ATOMIC UPDATE: Add to election creator's wallet
+        const creator = await User.findOneAndUpdate(
+            { _id: election.createdBy },
+            { $inc: { walletBalance: application.feeAmount } },
+            { new: true, session }
+        );
 
-        // Notify creator about fee release
-        if (creator) {
+        await session.commitTransaction();
+        session.endSession();
+
+        // Secondary actions (Non-blocking)
+        try {
             await createNotification({
-                userId: creator._id,
+                userId: application.userId,
                 type: 'application_approved',
-                title: 'Contestant Fee Received',
-                message: `₦${application.feeAmount.toLocaleString()} contestant fee released to your wallet from ${application.userId.name}'s application`,
+                title: 'Application Approved!',
+                message: `Your application for ${position.title} in ${election.title} has been approved. You are now a candidate!`,
                 relatedId: election._id,
-                fromUserId: application.userId._id
+                fromUserId: req.user._id
             });
-        }
 
-        // Socket events
-        const io = req.app.get('io');
-        if (io) {
-            io.to(application.userId._id.toString()).emit('application:approved', {
-                applicationId: application._id,
-                electionId: election._id
-            });
+            if (creator) {
+                await createNotification({
+                    userId: creator._id,
+                    type: 'application_approved',
+                    title: 'Contestant Fee Received',
+                    message: `₦${application.feeAmount.toLocaleString()} contestant fee released to your wallet from candidate's application`,
+                    relatedId: election._id,
+                    fromUserId: application.userId
+                });
+            }
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(application.userId.toString()).emit('application:approved', {
+                    applicationId: application._id,
+                    electionId: election._id
+                });
+                io.emit('wallet:updated', { userId: applicant._id, balance: applicant.walletBalance });
+                if (creator) io.emit('wallet:updated', { userId: creator._id, balance: creator.walletBalance });
+            }
+        } catch (err) {
+            console.error('Secondary action failed:', err);
         }
 
         res.json({ message: 'Application approved successfully', application });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -603,63 +651,90 @@ const approveApplication = async (req, res) => {
 // @route   PATCH /api/elections/applications/:applicationId/reject
 // @access  Private/Admin
 const rejectApplication = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { applicationId } = req.params;
         const { reason } = req.body;
 
-        const application = await CandidateApplication.findById(applicationId)
-            .populate('userId', 'name')
-            .populate('electionId');
+        const application = await CandidateApplication.findById(applicationId).session(session);
 
-        if (!application) return res.status(404).json({ message: 'Application not found' });
+        if (!application) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Application not found' });
+        }
         if (application.status !== 'pending') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Application already processed' });
         }
 
-        const election = await Election.findById(application.electionId);
-        if (!election) return res.status(404).json({ message: 'Election not found' });
+        const election = await Election.findById(application.electionId).session(session);
+        if (!election) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Election not found' });
+        }
 
         // Authorization check: User must be election creator or admin
         if (election.createdBy?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Not authorized to reject applications for this election' });
         }
 
-        // Update application status
+        // 1. Update application status
         application.status = 'rejected';
         application.reviewedAt = new Date();
         application.reviewedBy = req.user._id;
         application.rejectionReason = reason;
-        await application.save();
+        await application.save({ session });
 
-        // Refund fee from escrow back to wallet
-        const applicant = await User.findById(application.userId);
-        applicant.escrowBalance -= application.feeAmount;
-        applicant.walletBalance += application.feeAmount;
-        await applicant.save();
+        // 2. ATOMIC UPDATE: Refund fee from escrow back to wallet
+        const applicant = await User.findOneAndUpdate(
+            { _id: application.userId, escrowBalance: { $gte: application.feeAmount } },
+            { $inc: { escrowBalance: -application.feeAmount, walletBalance: application.feeAmount } },
+            { new: true, session }
+        );
 
-        // Notify applicant (rejected)
-        const position = election.positions.id(application.positionId);
+        if (!applicant) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Integrity error: Escrow balance insufficient for refund' });
+        }
 
-        await createNotification({
-            userId: application.userId._id,
-            type: 'application_rejected',
-            title: 'Application Rejected',
-            message: `Your application for ${position.title} in ${election.title} was rejected. Fee refunded to your wallet.${reason ? ` Reason: ${reason}` : ''}`,
-            relatedId: election._id,
-            fromUserId: req.user._id
-        });
+        await session.commitTransaction();
+        session.endSession();
 
-        // Socket events
-        const io = req.app.get('io');
-        if (io) {
-            io.to(application.userId._id.toString()).emit('application:rejected', {
-                applicationId: application._id,
-                electionId: election._id
+        // Secondary actions (Non-blocking)
+        try {
+            const position = election.positions.id(application.positionId);
+            await createNotification({
+                userId: application.userId,
+                type: 'application_rejected',
+                title: 'Application Rejected',
+                message: `Your application for ${position.title} in ${election.title} was rejected. Fee refunded to your wallet.${reason ? ` Reason: ${reason}` : ''}`,
+                relatedId: election._id,
+                fromUserId: req.user._id
             });
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(application.userId.toString()).emit('application:rejected', {
+                    applicationId: application._id,
+                    electionId: election._id
+                });
+                io.emit('wallet:updated', { userId: applicant._id, balance: applicant.walletBalance });
+            }
+        } catch (err) {
+            console.error('Secondary action failed:', err);
         }
 
         res.json({ message: 'Application rejected successfully', application });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };

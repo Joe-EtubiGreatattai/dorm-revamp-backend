@@ -30,9 +30,29 @@ const storage = new CloudinaryStorage({
     },
 });
 
+const fileFilter = (req, file, cb) => {
+    // Allowed file types: Images and PDF/Doc for KYC
+    const allowedTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, PDF, and Word documents are allowed.'), false);
+    }
+};
+
 const upload = multer({
     storage,
     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+    fileFilter
 });
 
 module.exports = upload;

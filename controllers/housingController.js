@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Housing = require('../models/Housing');
 const TourRequest = require('../models/TourRequest');
 const { createNotification } = require('./notificationController');
@@ -64,6 +65,14 @@ const getListing = async (req, res) => {
         if (!listing) {
             console.log('❌ [BACKEND] Listing not found:', req.params.id);
             return res.status(404).json({ message: 'Listing not found' });
+        }
+
+        // BOLA Check: Block status
+        if (req.user) {
+            const targetUser = await User.findById(listing.ownerId._id);
+            if (targetUser && (targetUser.blockedUsers.includes(req.user._id) || req.user.blockedUsers.includes(targetUser._id))) {
+                return res.status(403).json({ message: 'Access denied due to blocking' });
+            }
         }
 
         // Fetch actual reviews from the HousingReview model
@@ -229,80 +238,107 @@ const deleteListing = async (req, res) => {
 // @route   POST /api/housing/listings/:id/tour
 // @access  Private
 const requestTour = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const User = require('../models/User');
         const Transaction = require('../models/Transaction');
 
-        const listing = await Housing.findById(req.params.id);
+        const listing = await Housing.findById(req.params.id).session(session);
 
         if (!listing) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Listing not found' });
         }
 
         const tourFee = listing.tourFee || 0;
-        const student = await User.findById(req.user._id);
-        const agent = await User.findById(listing.ownerId);
+        let student = await User.findById(req.user._id).session(session);
+        const agentId = listing.ownerId;
 
         if (tourFee > 0) {
-            if (student.walletBalance < tourFee) {
+            // ATOMIC UPDATE: Deduct from student
+            student = await User.findOneAndUpdate(
+                { _id: req.user._id, walletBalance: { $gte: tourFee } },
+                { $inc: { walletBalance: -tourFee } },
+                { new: true, session }
+            );
+
+            if (!student) {
+                await session.abortTransaction();
+                session.endSession();
                 return res.status(400).json({ message: `Insufficient wallet balance to pay touring fee (₦${tourFee.toLocaleString()})` });
             }
 
-            // Transfer touring fee
-            student.walletBalance -= tourFee;
-            agent.walletBalance += tourFee;
-
-            await student.save();
-            await agent.save();
+            // ATOMIC UPDATE: Add to agent
+            await User.findOneAndUpdate(
+                { _id: agentId },
+                { $inc: { walletBalance: tourFee } },
+                { session }
+            );
 
             // Create transaction records
-            await Transaction.create({
-                userId: student._id,
+            await Transaction.create([{
+                userId: req.user._id,
                 type: 'tour_payment',
-                amount: tourFee,
+                amount: -tourFee, // Negative for payment
                 status: 'completed',
                 marketItemId: listing._id.toString()
-            });
-
-            await Transaction.create({
-                userId: agent._id,
+            }, {
+                userId: agentId,
                 type: 'tour_receive',
                 amount: tourFee,
                 status: 'completed',
                 marketItemId: listing._id.toString()
-            });
+            }], { session });
         }
 
         const { preferredDate, preferredTime, message } = req.body;
 
-        const tourRequest = await TourRequest.create({
+        const tourRequest = await TourRequest.create([{
             listingId: listing._id,
             requesterId: req.user._id,
             ownerId: listing.ownerId,
             preferredDate,
             preferredTime,
             message
-        });
+        }], { session });
 
-        const populatedRequest = await TourRequest.findById(tourRequest._id)
+        await session.commitTransaction();
+        session.endSession();
+
+        const populatedRequest = await TourRequest.findById(tourRequest[0]._id)
             .populate('requesterId', 'name avatar university')
             .populate('listingId', 'title address');
 
-        // Create notification for owner
-        await createNotification({
-            userId: listing.ownerId,
-            fromUserId: req.user._id,
-            type: 'tour',
-            relatedId: tourRequest._id.toString(),
-            title: 'New Tour Request',
-            message: `${req.user.name} requested a tour for "${listing.title}". ${tourFee > 0 ? `Touring fee of ₦${tourFee.toLocaleString()} received.` : ''}`
-        });
+        // Create notification for owner (Non-blocking)
+        try {
+            await createNotification({
+                userId: listing.ownerId,
+                fromUserId: req.user._id,
+                type: 'tour',
+                relatedId: tourRequest[0]._id.toString(),
+                title: 'New Tour Request',
+                message: `${req.user.name} requested a tour for "${listing.title}". ${tourFee > 0 ? `Touring fee of ₦${tourFee.toLocaleString()} received.` : ''}`
+            });
+
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('wallet:updated', { userId: req.user._id, balance: student.walletBalance });
+                const agent = await User.findById(agentId);
+                if (agent) io.emit('wallet:updated', { userId: agentId, balance: agent.walletBalance });
+            }
+        } catch (err) {
+            console.error('Secondary action failed:', err);
+        }
 
         res.status(201).json({
             ...populatedRequest.toObject(),
             newBalance: student.walletBalance
         });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
@@ -21,36 +22,10 @@ const getBalance = async (req, res) => {
 // @desc    Top up wallet
 // @route   POST /api/wallet/topup
 // @access  Private
+// [REMOVED] - This endpoint was insecure and allowed arbitrary balance increases.
+// Use initializeTransaction and verifyTransaction with Paystack instead.
 const topUp = async (req, res) => {
-    try {
-        const { amount, paymentMethod } = req.body;
-
-        if (!amount || amount <= 0) {
-            return res.status(400).json({ message: 'Invalid amount' });
-        }
-
-        // Create transaction record
-        const transaction = await Transaction.create({
-            userId: req.user._id,
-            type: 'topup',
-            amount,
-            paymentMethod,
-            status: 'completed'
-        });
-
-        // Update user wallet balance
-        const user = await User.findById(req.user._id);
-        user.walletBalance += amount;
-        await user.save();
-
-        res.json({
-            message: 'Top up successful',
-            balance: user.walletBalance,
-            transaction
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
+    return res.status(403).json({ message: 'Direct top-up is disabled for security reasons. Please use the official payment gateway.' });
 };
 
 // @desc    Withdraw from wallet
@@ -60,17 +35,28 @@ const topUp = async (req, res) => {
 // @route   POST /api/wallet/withdraw
 // @access  Private
 const withdraw = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { amount, bankDetails, bankAccountId, saveAccount } = req.body;
 
         if (!amount || amount <= 0) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Invalid amount' });
         }
 
-        const user = await User.findById(req.user._id);
+        // ATOMIC UPDATE: Check balance and deduct in one operation
+        const user = await User.findOneAndUpdate(
+            { _id: req.user._id, walletBalance: { $gte: amount } },
+            { $inc: { walletBalance: -amount } },
+            { new: true, session }
+        );
 
-        if (user.walletBalance < amount) {
-            return res.status(400).json({ message: 'Insufficient balance' });
+        if (!user) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Insufficient balance or user not found' });
         }
 
         let finalBankDetails = bankDetails;
@@ -79,6 +65,8 @@ const withdraw = async (req, res) => {
         if (bankAccountId) {
             const selectedAccount = user.bankAccounts.id(bankAccountId);
             if (!selectedAccount) {
+                await session.abortTransaction();
+                session.endSession();
                 return res.status(400).json({ message: 'Bank account not found' });
             }
             finalBankDetails = {
@@ -93,15 +81,17 @@ const withdraw = async (req, res) => {
                 accountNumber: bankDetails.account,
                 accountName: bankDetails.name || bankDetails.accountName
             });
-            await user.save();
+            await user.save({ session });
         }
 
         if (!finalBankDetails) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Bank details or valid account required' });
         }
 
         // Create transaction record
-        const transaction = await Transaction.create({
+        const transaction = await Transaction.create([{
             userId: req.user._id,
             type: 'withdrawal',
             amount,
@@ -111,18 +101,19 @@ const withdraw = async (req, res) => {
                 accountName: finalBankDetails.name || finalBankDetails.accountName
             },
             status: 'pending'
-        });
+        }], { session });
 
-        // Update user wallet balance (DEDUCT IMMEDIATELY to prevent double withdrawal)
-        user.walletBalance -= amount;
-        await user.save();
+        await session.commitTransaction();
+        session.endSession();
 
         res.json({
             message: 'Withdrawal initiated and pending admin approval',
             balance: user.walletBalance,
-            transaction
+            transaction: transaction[0]
         });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -133,62 +124,80 @@ const withdraw = async (req, res) => {
 // @route   POST /api/wallet/transfer
 // @access  Private
 const transfer = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { recipientId, amount, description } = req.body;
         const senderId = req.user._id;
 
         if (!amount || amount <= 0) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Invalid amount' });
         }
 
         if (recipientId === senderId.toString()) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Cannot transfer to yourself' });
         }
 
-        const sender = await User.findById(senderId);
-        const recipient = await User.findById(recipientId);
+        // 1. ATOMIC UPDATE: Deduct from sender with balance check
+        const sender = await User.findOneAndUpdate(
+            { _id: senderId, walletBalance: { $gte: amount } },
+            { $inc: { walletBalance: -amount } },
+            { new: true, session }
+        );
+
+        if (!sender) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Insufficient balance or sender not found' });
+        }
+
+        const recipient = await User.findById(recipientId).session(session);
 
         if (!recipient) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Recipient not found' });
         }
 
-        if (sender.walletBalance < amount) {
-            return res.status(400).json({ message: 'Insufficient balance' });
-        }
-
-        // 1. Deduct from sender (Hold funds)
-        sender.walletBalance -= amount;
-        await sender.save();
+        const pairingId = crypto.randomBytes(16).toString('hex');
 
         // 2. Create Transaction for Sender (Status: pending_acceptance)
-        const senderTx = await Transaction.create({
+        const senderTx = await Transaction.create([{
             userId: senderId,
             type: 'transfer_out',
             amount: -amount,
             relatedUserId: recipientId,
             description: description || 'Transfer to ' + recipient.name,
-            status: 'pending_acceptance'
-        });
+            status: 'pending_acceptance',
+            pairingId
+        }], { session });
 
         // 3. Create Transaction for Recipient (Status: pending_acceptance)
-        // We create this so the recipient has a record to "accept"
-        await Transaction.create({
+        await Transaction.create([{
             userId: recipientId,
             type: 'transfer_in',
             amount: amount,
             relatedUserId: senderId,
             description: description || 'Received from ' + sender.name,
-            status: 'pending_acceptance'
-        });
+            status: 'pending_acceptance',
+            pairingId
+        }], { session });
 
-        // 4. Notification for Recipient (Request to Accept)
+        await session.commitTransaction();
+        session.endSession();
+
+        // 4. Notification for Recipient (Non-blocking outside transaction)
         try {
             await createNotification({
                 userId: recipientId,
                 type: 'payment_request',
                 title: 'Money Received',
                 message: `${sender.name} sent you ₦${amount.toLocaleString()}. Tap here to accept or reject.`,
-                relatedId: senderTx._id,
+                relatedId: senderTx[0]._id,
                 fromUserId: senderId
             });
         } catch (err) {
@@ -198,10 +207,12 @@ const transfer = async (req, res) => {
         res.json({
             message: 'Transfer initiated. Waiting for recipient to accept.',
             balance: sender.walletBalance,
-            transaction: senderTx
+            transaction: senderTx[0]
         });
 
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         console.error('Transfer error:', error);
         res.status(500).json({ message: 'Transfer failed', error: error.message });
     }
@@ -211,45 +222,60 @@ const transfer = async (req, res) => {
 // @route   POST /api/wallet/transfer/:id/accept
 // @access  Private
 const acceptTransfer = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const senderTxId = req.params.id;
-        const senderTx = await Transaction.findById(senderTxId);
+        const senderTx = await Transaction.findById(senderTxId).session(session);
 
         if (!senderTx || senderTx.status !== 'pending_acceptance') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Transaction not found or already processed' });
         }
 
         // Verify that the current user is indeed the recipient
         if (senderTx.relatedUserId.toString() !== req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Not authorized to accept this transfer' });
         }
 
-        const recipient = await User.findById(req.user._id);
-        const sender = await User.findById(senderTx.userId);
+        // ATOMIC UPDATE: Credit Recipient
+        const amountToCredit = Math.abs(senderTx.amount);
+        const recipient = await User.findOneAndUpdate(
+            { _id: req.user._id },
+            { $inc: { walletBalance: amountToCredit } },
+            { new: true, session }
+        );
 
-        // Credit Recipient
-        recipient.walletBalance += Math.abs(senderTx.amount); // amount is negative in senderTx
-        await recipient.save();
+        if (!recipient) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Recipient not found' });
+        }
 
         // Update Sender Transaction
         senderTx.status = 'completed';
-        await senderTx.save();
+        await senderTx.save({ session });
 
-        // Update Recipient Transaction (Find the paired transaction)
+        // Update Recipient Transaction (Using pairingId or search)
         const recipientTx = await Transaction.findOne({
             userId: req.user._id,
-            relatedUserId: senderTx.userId,
+            pairingId: senderTx.pairingId,
             type: 'transfer_in',
-            amount: Math.abs(senderTx.amount),
             status: 'pending_acceptance'
-        });
+        }).session(session);
 
         if (recipientTx) {
             recipientTx.status = 'completed';
-            await recipientTx.save();
+            await recipientTx.save({ session });
         }
 
-        // Mark payment_request notification as actioned
+        await session.commitTransaction();
+        session.endSession();
+
+        // Mark notification as actioned (Non-blocking)
         try {
             await Notification.updateMany(
                 { userId: req.user._id, relatedId: senderTx._id, type: 'payment_request' },
@@ -261,19 +287,20 @@ const acceptTransfer = async (req, res) => {
 
         // Notify Sender
         try {
+            const sender = await User.findById(senderTx.userId);
             await createNotification({
-                userId: sender._id,
+                userId: senderTx.userId,
                 type: 'payment_accepted',
                 title: 'Transfer Accepted ✅',
-                message: `${recipient.name} accepted your transfer of ₦${Math.abs(senderTx.amount).toLocaleString()}.`,
+                message: `${recipient.name} accepted your transfer of ₦${amountToCredit.toLocaleString()}.`,
                 relatedId: senderTx._id,
                 fromUserId: recipient._id
             });
 
             const io = req.app.get('io');
             if (io) {
-                // Update recipient balance in real-time
                 io.emit('wallet:updated', { userId: recipient._id, balance: recipient.walletBalance });
+                io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
             }
         } catch (err) {
             console.error('Notification error', err);
@@ -282,6 +309,8 @@ const acceptTransfer = async (req, res) => {
         res.json({ message: 'Transfer accepted', balance: recipient.walletBalance });
 
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -290,45 +319,56 @@ const acceptTransfer = async (req, res) => {
 // @route   POST /api/wallet/transfer/:id/reject
 // @access  Private
 const rejectTransfer = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const senderTxId = req.params.id;
-        const senderTx = await Transaction.findById(senderTxId);
+        const senderTx = await Transaction.findById(senderTxId).session(session);
 
         if (!senderTx || senderTx.status !== 'pending_acceptance') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Transaction not found or already processed' });
         }
 
         // Verify that the current user is indeed the recipient
         if (senderTx.relatedUserId.toString() !== req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Not authorized to reject this transfer' });
         }
 
-        const sender = await User.findById(senderTx.userId);
-        const recipient = await User.findById(req.user._id);
+        // ATOMIC UPDATE: Refund Sender
+        const amountToRefund = Math.abs(senderTx.amount);
+        const sender = await User.findOneAndUpdate(
+            { _id: senderTx.userId },
+            { $inc: { walletBalance: amountToRefund } },
+            { new: true, session }
+        );
 
-        // Refund Sender
-        sender.walletBalance += Math.abs(senderTx.amount);
-        await sender.save();
+        const recipient = await User.findById(req.user._id).session(session);
 
         // Update Sender Transaction
         senderTx.status = 'rejected';
-        await senderTx.save();
+        await senderTx.save({ session });
 
         // Update Recipient Transaction
         const recipientTx = await Transaction.findOne({
             userId: req.user._id,
-            relatedUserId: senderTx.userId,
+            pairingId: senderTx.pairingId,
             type: 'transfer_in',
-            amount: Math.abs(senderTx.amount),
             status: 'pending_acceptance'
-        });
+        }).session(session);
 
         if (recipientTx) {
             recipientTx.status = 'rejected';
-            await recipientTx.save();
+            await recipientTx.save({ session });
         }
 
-        // Mark payment_request notification as actioned
+        await session.commitTransaction();
+        session.endSession();
+
+        // Mark notification as actioned (Non-blocking)
         try {
             await Notification.updateMany(
                 { userId: req.user._id, relatedId: senderTx._id, type: 'payment_request' },
@@ -341,10 +381,10 @@ const rejectTransfer = async (req, res) => {
         // Notify Sender
         try {
             await createNotification({
-                userId: sender._id,
+                userId: senderTx.userId,
                 type: 'payment_rejected',
                 title: 'Transfer Rejected ❌',
-                message: `${recipient.name} rejected your transfer of ₦${Math.abs(senderTx.amount).toLocaleString()}. Funds have been returned to your wallet.`,
+                message: `${recipient.name} rejected your transfer of ₦${amountToRefund.toLocaleString()}. Funds have been returned to your wallet.`,
                 relatedId: senderTx._id,
                 fromUserId: recipient._id
             });
@@ -352,7 +392,7 @@ const rejectTransfer = async (req, res) => {
             const io = req.app.get('io');
             if (io) {
                 // Update sender balance in real-time
-                io.emit('wallet:updated', { userId: sender._id, balance: sender.walletBalance });
+                io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
             }
         } catch (err) {
             console.error('Notification error', err);
@@ -361,6 +401,8 @@ const rejectTransfer = async (req, res) => {
         res.json({ message: 'Transfer rejected' });
 
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -424,27 +466,36 @@ const approveWithdrawal = async (req, res) => {
 // @route   PATCH /api/wallet/admin/withdrawals/:id/reject
 // @access  Private/Admin
 const rejectWithdrawal = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
-        const transaction = await Transaction.findById(req.params.id);
+        const transaction = await Transaction.findById(req.params.id).session(session);
         if (!transaction || transaction.type !== 'withdrawal') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Withdrawal request not found' });
         }
 
         if (transaction.status !== 'pending') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: `Cannot reject transaction in ${transaction.status} state` });
         }
 
-        // Refund user
-        const user = await User.findById(transaction.userId);
-        if (user) {
-            user.walletBalance += transaction.amount;
-            await user.save();
-        }
+        // ATOMIC UPDATE: Refund user
+        const user = await User.findOneAndUpdate(
+            { _id: transaction.userId },
+            { $inc: { walletBalance: transaction.amount } },
+            { new: true, session }
+        );
 
         transaction.status = 'failed';
-        await transaction.save();
+        await transaction.save({ session });
 
-        // Notify user
+        await session.commitTransaction();
+        session.endSession();
+
+        // Notify user (Non-blocking)
         try {
             await Notification.create({
                 userId: transaction.userId,
@@ -465,6 +516,8 @@ const rejectWithdrawal = async (req, res) => {
 
         res.json({ message: 'Withdrawal rejected and funds refunded', transaction });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -548,17 +601,30 @@ const verifyTransaction = async (req, res) => {
         const apiData = response.data.data;
 
         if (apiData.status === 'success') {
+            // SECURITY FIX: Check if the transaction belongs to the current user
+            // Paystack stores the customer email in the transaction data
+            if (apiData.customer.email.toLowerCase() !== req.user.email.toLowerCase()) {
+                console.error(`❌ [Security] Paystack verification email mismatch. Expected: ${req.user.email}, Got: ${apiData.customer.email}`);
+                return res.status(403).json({ message: 'This transaction record does not belong to you.' });
+            }
+
             // Check if transaction already exists to avoid double credit
             const existingTx = await Transaction.findOne({ reference });
             if (existingTx) {
                 return res.status(400).json({ message: 'Transaction already processed' });
             }
 
-            // Credit wallet
+            // ATOMIC UPDATE: Use findOneAndUpdate with $inc
             const amount = apiData.amount / 100; // Convert back to Naira
-            const user = await User.findById(req.user._id);
-            user.walletBalance += amount;
-            await user.save();
+            const user = await User.findOneAndUpdate(
+                { _id: req.user._id },
+                { $inc: { walletBalance: amount } },
+                { new: true }
+            );
+
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
+            }
 
             // Create Transaction Record
             const transaction = await Transaction.create({
@@ -567,7 +633,7 @@ const verifyTransaction = async (req, res) => {
                 amount,
                 paymentMethod: 'paystack',
                 status: 'completed',
-                reference // Save reference to prevent duplicates
+                reference // Save reference for idempotency
             });
 
             res.json({ message: 'Wallet funded successfully', balance: user.walletBalance, transaction });
@@ -620,6 +686,8 @@ const verifyTransactionCallback = async (req, res) => {
 // @route   POST /api/wallet/webhook
 // @access  Public (Protected by Signature)
 const handlePaystackWebhook = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         // 1. Verify Signature
         const secret = process.env.PAYSTACK_SECRET_KEY;
@@ -627,11 +695,12 @@ const handlePaystackWebhook = async (req, res) => {
 
         if (hash !== req.headers['x-paystack-signature']) {
             console.error('❌ [Webhook] Invalid Paystack signature');
+            await session.abortTransaction();
+            session.endSession();
             return res.status(401).json({ message: 'Invalid signature' });
         }
 
         const event = req.body;
-        console.log(`📩 [Webhook] Received Paystack event: ${event.event}`);
 
         // 2. Handle successful charge
         if (event.event === 'charge.success') {
@@ -640,47 +709,58 @@ const handlePaystackWebhook = async (req, res) => {
             const amount = data.amount / 100; // Convert kobo to Naira
             const email = data.customer.email;
 
-            // Find user by email (or metadata if provided during initialization)
-            const user = await User.findOne({ email });
-            if (!user) {
-                console.error(`❌ [Webhook] User not found for email: ${email}`);
-                return res.status(404).json({ message: 'User not found' });
-            }
-
             // check idempotency - ensure we don't process the same reference twice
-            const existingTx = await Transaction.findOne({ reference });
+            const existingTx = await Transaction.findOne({ reference }).session(session);
             if (existingTx) {
-                console.log(`⚠️ [Webhook] Transaction already processed: ${reference}`);
+                await session.abortTransaction();
+                session.endSession();
                 return res.status(200).json({ message: 'Already processed' });
             }
 
-            // Credit user wallet
-            user.walletBalance += amount;
-            await user.save();
+            // ATOMIC UPDATE: Credit user wallet
+            const user = await User.findOneAndUpdate(
+                { email: email.toLowerCase() },
+                { $inc: { walletBalance: amount } },
+                { new: true, session }
+            );
+
+            if (!user) {
+                console.error(`❌ [Webhook] User not found for email: ${email}`);
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(404).json({ message: 'User not found' });
+            }
 
             // Create Transaction record
-            await Transaction.create({
+            await Transaction.create([{
                 userId: user._id,
                 type: 'topup',
                 amount,
                 paymentMethod: 'paystack',
                 status: 'completed',
                 reference
-            });
+            }], { session });
 
-            console.log(`✅ [Webhook] Wallet credited for ${email}: ₦${amount}`);
+            await session.commitTransaction();
+            session.endSession();
 
-            // Emit socket event to notify user in real-time
+
+            // Emit socket event (Non-blocking)
             const io = req.app.get('io');
             if (io) {
                 io.emit('wallet:updated', { userId: user._id, balance: user.walletBalance });
             }
+        } else {
+            // Not a charge.success event, just end correctly
+            await session.commitTransaction();
+            session.endSession();
         }
 
-        // Paystack expects a 200 OK response
         res.status(200).json({ status: 'success' });
 
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         console.error('❌ [Webhook] Error:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }

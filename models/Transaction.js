@@ -31,6 +31,15 @@ const transactionSchema = new mongoose.Schema({
         accountName: String,
     },
     marketItemId: String, // Optional: relating to a specific purchase
+    pairingId: {
+        type: String,
+        description: 'Links an outgoing transfer to its corresponding incoming record'
+    },
+    reference: {
+        type: String,
+        unique: true,
+        sparse: true // Only required for external payments
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

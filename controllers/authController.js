@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const sanitize = require('mongo-sanitize');
 const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
 const crypto = require('crypto');
@@ -35,12 +36,12 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Generate Wallet ID (Random 10 digit number)
-        let walletId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
-        // Ensure uniqueness (simple check, in production use a loop)
+        // Generate Wallet ID (Securely)
+        let walletId = crypto.randomInt(1000000000, 9999999999).toString();
+        // Ensure uniqueness
         const walletIdExists = await User.findOne({ walletId });
         if (walletIdExists) {
-            walletId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            walletId = crypto.randomInt(1000000000, 9999999999).toString();
         }
 
         // Create user
@@ -86,13 +87,11 @@ const register = async (req, res) => {
             userData.kycDocument = req.body.kycDocument;
         }
 
-        // Generate Verification Token
-        const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate Verification Token (Securely)
+        const verificationToken = crypto.randomInt(100000, 999999).toString();
         userData.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
         userData.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 Hours
 
-        console.log('Generated Verification Token for', email, ':', verificationToken);
-        console.log('Hashed Token:', userData.verificationToken);
 
         const user = await User.create(userData);
 
@@ -132,7 +131,7 @@ const register = async (req, res) => {
 // @access  Public
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = sanitize(req.body);
 
         // Check for user email
         const user = await User.findOne({ email });
@@ -192,11 +191,10 @@ const searchUsers = async (req, res) => {
         const users = await User.find({
             $or: [
                 { name: { $regex: query, $options: 'i' } },
-                { walletId: query },
-                { matricNo: { $regex: query, $options: 'i' } }
+                { walletId: query }
             ],
             _id: { $ne: req.user._id } // Exclude current user
-        }).select('name walletId matricNo avatar university');
+        }).select('name walletId avatar university');
 
         res.json(users);
     } catch (error) {
@@ -299,14 +297,15 @@ const changePassword = async (req, res) => {
 // @access  Public
 const forgotPassword = async (req, res) => {
     try {
-        const user = await User.findOne({ email: req.body.email });
+        const { email } = sanitize(req.body);
+        const user = await User.findOne({ email });
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Generate Reset Token (Simple 6 digit code for mobile friendliness)
-        const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate Reset Token (Securely)
+        const resetToken = crypto.randomInt(100000, 999999).toString();
 
         // Hash and set to resetPasswordToken field
         user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
@@ -343,8 +342,9 @@ const forgotPassword = async (req, res) => {
 // @access  Public
 const resetPassword = async (req, res) => {
     try {
+        const { token: resetToken, password } = sanitize(req.body);
         // Get hashed token
-        const resetPasswordToken = crypto.createHash('sha256').update(req.body.token).digest('hex');
+        const resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
         const user = await User.findOne({
             resetPasswordToken,
@@ -379,7 +379,7 @@ const resetPassword = async (req, res) => {
 // @access  Public
 const verifyEmail = async (req, res) => {
     try {
-        const { token, email } = req.body;
+        const { token, email } = sanitize(req.body);
         const hashedToken = crypto.createHash('sha256').update(token.toString()).digest('hex');
 
         console.log('Verifying Email:', { receivedToken: token, hashedToken });
@@ -462,8 +462,8 @@ const resendVerificationCode = async (req, res) => {
             return res.status(400).json({ message: 'Account already verified' });
         }
 
-        // Generate Verification Token
-        const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate Verification Token (Securely)
+        const verificationToken = crypto.randomInt(100000, 999999).toString();
         user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
         user.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 Hours
 

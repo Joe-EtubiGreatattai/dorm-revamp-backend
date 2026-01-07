@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const MarketItem = require('../models/MarketItem');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -164,72 +165,108 @@ const updateStatus = async (req, res) => {
 // @route   POST /api/orders/:id/confirm
 // @access  Private
 const confirmReceipt = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id).session(session);
 
         if (!order) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Order not found' });
         }
 
         // Only buyer can confirm
         if (order.buyerId.toString() !== req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Not authorized' });
         }
 
         if (order.escrowStatus === 'released') {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Escrow already released' });
         }
 
-        // Get buyer and seller
-        const buyer = await User.findById(order.buyerId);
-        const seller = await User.findById(order.sellerId);
+        const buyerId = order.buyerId;
+        const sellerId = order.sellerId;
+        const amount = order.escrowAmount;
 
-        // Release escrow
-        buyer.escrowBalance -= order.escrowAmount;
-        seller.walletBalance += order.escrowAmount;
+        // ATOMIC UPDATE: Deduct from buyer escrow
+        const buyer = await User.findOneAndUpdate(
+            { _id: buyerId, escrowBalance: { $gte: amount } },
+            { $inc: { escrowBalance: -amount } },
+            { new: true, session }
+        );
 
-        await buyer.save();
-        await seller.save();
+        if (!buyer) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Integrity error: Escrow balance insufficient for release' });
+        }
+
+        // ATOMIC UPDATE: Add to seller wallet
+        const seller = await User.findOneAndUpdate(
+            { _id: sellerId },
+            { $inc: { walletBalance: amount } },
+            { new: true, session }
+        );
+
+        if (!seller) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Seller not found' });
+        }
 
         // Update order
         order.escrowStatus = 'released';
         order.status = 'delivered';
-        await order.save();
+        await order.save({ session });
 
         // Create transaction record for escrow release
-        await Transaction.create({
-            userId: seller._id,
+        await Transaction.create([{
+            userId: sellerId,
             type: 'escrow_release',
-            amount: order.escrowAmount,
+            amount: amount,
             status: 'completed',
             orderId: order._id
-        });
+        }], { session });
 
-        // Emit real-time event to seller
-        const io = req.app.get('io');
-        if (io) {
-            io.to(seller._id.toString()).emit('order:escrowReleased', {
-                orderId: order._id,
-                amount: order.escrowAmount,
-                message: 'Funds have been released to your wallet'
+        await session.commitTransaction();
+        session.endSession();
+
+        // Secondary actions (Non-blocking)
+        try {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(sellerId.toString()).emit('order:escrowReleased', {
+                    orderId: order._id,
+                    amount: amount,
+                    message: 'Funds have been released to your wallet'
+                });
+                io.emit('wallet:updated', { userId: sellerId, balance: seller.walletBalance });
+            }
+
+            await createNotification({
+                userId: sellerId,
+                type: 'order',
+                title: 'Funds Released',
+                message: `Funds for your order have been released to your wallet.`,
+                relatedId: order._id.toString(),
+                fromUserId: buyerId
             });
+        } catch (err) {
+            console.error('Secondary action failed:', err);
         }
-
-        // Create notification for seller
-        await createNotification({
-            userId: seller._id,
-            type: 'order',
-            title: 'Funds Released',
-            message: `Funds for your order have been released to your wallet.`,
-            relatedId: order._id.toString(),
-            fromUserId: buyer._id // The buyer
-        });
 
         res.json({
             message: 'Funds released to seller',
             order
         });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
@@ -238,83 +275,106 @@ const confirmReceipt = async (req, res) => {
 // @route   POST /api/orders/:id/cancel
 // @access  Private
 const cancelOrder = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id).session(session);
 
         if (!order) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ message: 'Order not found' });
         }
 
         // Only buyer can cancel
         if (order.buyerId.toString() !== req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(403).json({ message: 'Only the buyer can cancel this order' });
         }
 
         // Check if order is cancellable (pending or processing)
         const nonCancellableStatuses = ['shipping', 'delivered', 'cancelled'];
         if (nonCancellableStatuses.includes(order.status)) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({
                 message: `Order cannot be cancelled because it is already ${order.status}`
             });
         }
 
-        const buyer = await User.findById(order.buyerId);
-        const item = await MarketItem.findById(order.itemId);
+        const buyerId = order.buyerId;
+        const amount = order.escrowAmount;
 
-        // Refund escrow to buyer
+        // 1. ATOMIC UPDATE: Refund escrow to buyer
+        let buyer;
         if (order.escrowStatus === 'held') {
-            buyer.escrowBalance -= order.escrowAmount;
-            buyer.walletBalance += order.escrowAmount;
-            await buyer.save();
+            buyer = await User.findOneAndUpdate(
+                { _id: buyerId, escrowBalance: { $gte: amount } },
+                { $inc: { escrowBalance: -amount, walletBalance: amount } },
+                { new: true, session }
+            );
 
-            // Store status update
+            if (!buyer) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({ message: 'Integrity error: Escrow balance insufficient for refund' });
+            }
             order.escrowStatus = 'released';
         }
 
-        // Update order status
+        // 2. Update order status
         order.status = 'cancelled';
-        await order.save();
+        await order.save({ session });
 
-        // Make item available again
-        if (item) {
-            item.status = 'available';
-            await item.save();
+        // 3. Make item available again
+        if (order.itemId) {
+            await MarketItem.findByIdAndUpdate(order.itemId, { status: 'available' }, { session });
         }
 
-        // Create transaction record for refund
-        await Transaction.create({
-            userId: buyer._id,
-            type: 'escrow_release', // We could use a specific 'escrow_refund' if we want
-            amount: order.escrowAmount,
+        // 4. Create transaction record for refund
+        await Transaction.create([{
+            userId: buyerId,
+            type: 'escrow_release',
+            amount: amount,
             status: 'completed',
             orderId: order._id,
-            marketItemId: order.itemId.toString()
-        });
+            marketItemId: order.itemId?.toString()
+        }], { session });
 
-        // Emit socket update to seller
-        const io = req.app.get('io');
-        if (io) {
-            io.to(order.sellerId.toString()).emit('order:cancelled', {
-                orderId: order._id,
-                message: 'A buyer has cancelled their order'
+        await session.commitTransaction();
+        session.endSession();
+
+        // Secondary actions (Non-blocking)
+        try {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(order.sellerId.toString()).emit('order:cancelled', {
+                    orderId: order._id,
+                    message: 'A buyer has cancelled their order'
+                });
+                if (buyer) io.emit('wallet:updated', { userId: buyerId, balance: buyer.walletBalance });
+            }
+
+            await createNotification({
+                userId: order.sellerId,
+                type: 'order',
+                title: 'Order Cancelled',
+                message: `A buyer has cancelled their order. Funds have been returned to them.`,
+                relatedId: order._id.toString(),
+                fromUserId: req.user._id
             });
+        } catch (err) {
+            console.error('Secondary action failed:', err);
         }
-
-        // Create notification for seller
-        await createNotification({
-            userId: order.sellerId,
-            type: 'order',
-            title: 'Order Cancelled',
-            message: `A buyer has cancelled their order. Funds have been returned to them.`,
-            relatedId: order._id.toString(),
-            fromUserId: req.user._id // The buyer
-        });
 
         res.json({
             message: 'Order cancelled and funds refunded',
             order
         });
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         res.status(500).json({ message: error.message });
     }
 };
