@@ -14,7 +14,23 @@ const getComments = async (req, res) => {
             })
             .sort({ createdAt: -1 });
 
-        res.json(comments);
+        // Normalize data for frontend (map userId to user)
+        const normalizedComments = comments.map(comment => {
+            const c = comment.toObject();
+            const normalizedReplies = (c.replies || []).map(reply => ({
+                ...reply,
+                user: reply.userId,
+                userId: reply.userId?._id
+            }));
+            return {
+                ...c,
+                user: c.userId,
+                userId: c.userId?._id,
+                replies: normalizedReplies
+            };
+        });
+
+        res.json(normalizedComments);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -76,6 +92,9 @@ const createComment = async (req, res) => {
         const populatedComment = await Comment.findById(comment._id)
             .populate('userId', 'name avatar');
 
+        const c = populatedComment.toObject();
+        const normalizedComment = { ...c, user: c.userId, userId: c.userId?._id };
+
         // Emit real-time events
         const io = req.app.get('io');
         if (io && post) {
@@ -119,7 +138,7 @@ const createComment = async (req, res) => {
             }
         }
 
-        res.status(201).json(populatedComment);
+        res.status(201).json(normalizedComment);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
