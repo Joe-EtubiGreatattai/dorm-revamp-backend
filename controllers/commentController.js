@@ -52,6 +52,25 @@ const createComment = async (req, res) => {
                 post.comments.push(comment._id);
                 await post.save();
             }
+
+            // Monetization logic for comments (paid to post author)
+            if (post.userId.toString() !== req.user._id.toString()) {
+                const User = require('../models/User');
+                const author = await User.findById(post.userId);
+                if (author && author.followers && author.followers.length >= 1000) {
+                    const Transaction = require('../models/Transaction');
+                    await User.findByIdAndUpdate(author._id, {
+                        $inc: { walletBalance: 1, totalMonetizationEarnings: 1 }
+                    });
+                    await Transaction.create({
+                        userId: author._id,
+                        type: 'monetization_comment',
+                        amount: 1,
+                        status: 'completed',
+                        description: `Monetization for comment on post ${postId}`
+                    });
+                }
+            }
         }
 
         const populatedComment = await Comment.findById(comment._id)

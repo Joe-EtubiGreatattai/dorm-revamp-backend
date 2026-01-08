@@ -223,10 +223,29 @@ const likePost = async (req, res) => {
             req.params.id,
             update,
             { new: true }
-        ).populate('userId', 'name avatar university');
+        ).populate('userId', 'name avatar university followers');
 
         const p = updatedPost.toObject();
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+
+        // Monetization logic
+        const author = updatedPost.userId;
+        if (!alreadyLiked && author && author.followers && author.followers.length >= 1000) {
+            const currentLikes = updatedPost.likes.length;
+            if (currentLikes > 0 && currentLikes % 100 === 0) {
+                const Transaction = require('../models/Transaction');
+                await User.findByIdAndUpdate(author._id, {
+                    $inc: { walletBalance: 1, totalMonetizationEarnings: 1 }
+                });
+                await Transaction.create({
+                    userId: author._id,
+                    type: 'monetization_like',
+                    amount: 1,
+                    status: 'completed',
+                    description: `Like milestone reached: ${currentLikes} likes`
+                });
+            }
+        }
 
         // Emit real-time events
         const io = req.app.get('io');

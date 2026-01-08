@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['topup', 'withdrawal', 'escrow_hold', 'escrow_release', 'rent_payment', 'rent_receive', 'tour_payment', 'tour_receive', 'transfer_in', 'transfer_out', 'contestant_fee'],
+        enum: ['topup', 'withdrawal', 'escrow_hold', 'escrow_release', 'rent_payment', 'rent_receive', 'tour_payment', 'tour_receive', 'transfer_in', 'transfer_out', 'contestant_fee', 'monetization_like', 'monetization_comment'],
         required: true,
     },
     relatedUserId: {

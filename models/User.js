@@ -132,6 +132,15 @@ const userSchema = new mongoose.Schema({
         enum: ['pending', 'verified', 'rejected', 'none'],
         default: 'none'
     },
+    // Monetization
+    monetizationEnabled: {
+        type: Boolean,
+        default: false
+    },
+    totalMonetizationEarnings: {
+        type: Number,
+        default: 0
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
