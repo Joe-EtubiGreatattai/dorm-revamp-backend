@@ -13,6 +13,7 @@ const {
 
     getUserProfile,
     searchUsers, // Import searchUsers
+    toggleMonetization,
     deleteUser
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
@@ -29,6 +30,7 @@ router.get('/users/:id', getUserProfile);
 // Update profile with image upload
 router.put('/profile', protect, upload.single('avatar'), updateProfile);
 router.put('/password', protect, changePassword);
+router.post('/monetization/toggle', protect, toggleMonetization);
 
 // Bank Accounts
 const { addBankAccount, getBankAccounts, resendVerificationCode } = require('../controllers/authController');

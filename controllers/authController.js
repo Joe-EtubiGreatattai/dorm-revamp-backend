@@ -702,6 +702,32 @@ const getBlockedUsers = async (req, res) => {
     }
 };
 
+const toggleMonetization = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const newState = !user.monetizationEnabled;
+
+        // If trying to enable, check eligibility
+        if (newState && user.followers.length < 1000) {
+            return res.status(400).json({
+                message: 'You need at least 1,000 followers to enable monetization'
+            });
+        }
+
+        user.monetizationEnabled = newState;
+        await user.save();
+
+        res.json({
+            message: `Monetization ${newState ? 'enabled' : 'disabled'} successfully`,
+            monetizationEnabled: user.monetizationEnabled
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const deleteUser = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -760,5 +786,6 @@ module.exports = {
     unblockUser,
     getBlockedUsers,
     searchUsers,
+    toggleMonetization,
     deleteUser
 };

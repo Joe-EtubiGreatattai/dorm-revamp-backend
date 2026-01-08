@@ -41,7 +41,7 @@ const getFeed = async (req, res) => {
         }
 
         const posts = await Post.find(query)
-            .populate('userId', 'name avatar university')
+            .populate('userId', 'name avatar university monetizationEnabled')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -70,7 +70,7 @@ const getFeed = async (req, res) => {
 const getPost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id)
-            .populate('userId', 'name avatar university')
+            .populate('userId', 'name avatar university monetizationEnabled') // Updated populate call
             .populate({
                 path: 'comments',
                 populate: { path: 'userId', select: 'name avatar' }
@@ -132,7 +132,7 @@ const createPost = async (req, res) => {
         });
 
         const populatedPost = await Post.findById(post._id)
-            .populate('userId', 'name avatar university');
+            .populate('userId', 'name avatar university monetizationEnabled');
 
         // Emit real-time event
         const io = req.app.get('io');
@@ -280,7 +280,7 @@ const sharePost = async (req, res) => {
             req.params.id,
             { $inc: { shares: 1 } },
             { new: true }
-        ).populate('userId', 'name avatar university');
+        ).populate('userId', 'name avatar university monetizationEnabled');
 
         if (!updatedPost) return res.status(404).json({ message: 'Post not found' });
 
@@ -327,7 +327,7 @@ const bookmarkPost = async (req, res) => {
             req.params.id,
             update,
             { new: true }
-        ).populate('userId', 'name avatar university');
+        ).populate('userId', 'name avatar university monetizationEnabled');
 
         const p = updatedPost.toObject();
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
@@ -368,7 +368,7 @@ const getUserPosts = async (req, res) => {
         }
 
         const posts = await Post.find(query)
-            .populate('userId', 'name avatar university')
+            .populate('userId', 'name avatar university monetizationEnabled')
             .sort({ createdAt: -1 });
 
         const normalizedPosts = posts.map(post => {
