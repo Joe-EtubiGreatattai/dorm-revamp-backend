@@ -6,6 +6,7 @@ const sendEmail = require('../utils/sendEmail');
 const crypto = require('crypto');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const DeletionRequest = require('../models/DeletionRequest');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -763,6 +764,38 @@ const deleteUser = async (req, res) => {
     }
 };
 
+const requestDataDeletion = async (req, res) => {
+    try {
+        const { email, reason } = req.body;
+
+        if (!email || !reason) {
+            return res.status(400).json({ message: 'Please provide email and reason' });
+        }
+
+        const deletionRequest = await DeletionRequest.create({
+            email,
+            reason
+        });
+
+        // Optional: Send confirmation email to user
+        try {
+            await sendEmail({
+                email,
+                subject: 'Account Deletion Request Received',
+                message: `We have received your request to delete your account and associated data for the email ${email}. Our team will process this request within 30 days. If this wasn't you, please contact support immediately.`
+            });
+        } catch (emailError) {
+            console.error('Failed to send deletion confirmation email:', emailError);
+        }
+
+        res.status(201).json({
+            message: 'Your deletion request has been submitted successfully. It will be processed within 30 days.'
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     register,
     login,
@@ -787,5 +820,6 @@ module.exports = {
     getBlockedUsers,
     searchUsers,
     toggleMonetization,
-    deleteUser
+    deleteUser,
+    requestDataDeletion
 };

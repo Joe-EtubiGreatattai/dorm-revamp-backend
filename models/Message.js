@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const messageSchema = new mongoose.Schema({
     conversationId: {
@@ -29,5 +30,35 @@ const messageSchema = new mongoose.Schema({
         default: false
     },
 }, { timestamps: true });
+
+// Encryption Hook
+messageSchema.pre('save', async function () {
+    if (this.isModified('content') && this.type === 'text') {
+        this.content = encrypt(this.content);
+    }
+});
+
+// Decryption Hooks
+messageSchema.post('init', function (doc) {
+    if (doc.content && doc.type === 'text') {
+        doc.content = decrypt(doc.content);
+    }
+});
+
+messageSchema.post('save', function (doc) {
+    if (doc.content && doc.type === 'text') {
+        doc.content = decrypt(doc.content);
+    }
+});
+
+// Ensure decrypted content is returned in JSON
+messageSchema.set('toJSON', {
+    transform: function (doc, ret) {
+        if (ret.content && ret.type === 'text') {
+            ret.content = decrypt(ret.content);
+        }
+        return ret;
+    }
+});
 
 module.exports = mongoose.model('Message', messageSchema);

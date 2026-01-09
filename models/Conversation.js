@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const conversationSchema = new mongoose.Schema({
     participants: [{
@@ -14,5 +15,25 @@ const conversationSchema = new mongoose.Schema({
         default: Date.now
     }
 }, { timestamps: true });
+
+// Encryption Hook
+conversationSchema.pre('save', async function () {
+    if (this.isModified('lastMessage')) {
+        this.lastMessage = encrypt(this.lastMessage);
+    }
+});
+
+// Decryption Hooks
+conversationSchema.post('init', function (doc) {
+    if (doc.lastMessage) {
+        doc.lastMessage = decrypt(doc.lastMessage);
+    }
+});
+
+conversationSchema.post('save', function (doc) {
+    if (doc.lastMessage) {
+        doc.lastMessage = decrypt(doc.lastMessage);
+    }
+});
 
 module.exports = mongoose.model('Conversation', conversationSchema);

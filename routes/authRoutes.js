@@ -14,7 +14,8 @@ const {
     getUserProfile,
     searchUsers, // Import searchUsers
     toggleMonetization,
-    deleteUser
+    deleteUser,
+    requestDataDeletion
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -54,5 +55,7 @@ router.post('/users/:id/follow', protect, followUser);
 router.post('/users/:id/unfollow', protect, unfollowUser);
 router.post('/users/:id/block', protect, blockUser);
 router.post('/users/:id/unblock', protect, unblockUser);
+
+router.post('/request-data-deletion', requestDataDeletion);
 
 module.exports = router;
