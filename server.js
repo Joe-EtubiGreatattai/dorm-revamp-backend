@@ -18,7 +18,8 @@ const server = http.createServer(app);
 const allowedOrigins = [
     'http://192.168.0.130:8081',
     'http://localhost:8081',
-    'exp://192.168.0.130:8081'
+    'exp://192.168.0.130:8081',
+    'https://dorm-revamp-admin.vercel.app'
 ];
 
 // Socket.io setup
