@@ -82,7 +82,7 @@ app.use('/api/support', require('./routes/supportRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
-    res.send('Dorm Revamp API is running...');
+    res.send('Dorm API is running...');
 });
 
 // Error Handlers
@@ -90,7 +90,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Database Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dorm_revamp';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dorm';
 mongoose.connect(MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('Could not connect to MongoDB', err));

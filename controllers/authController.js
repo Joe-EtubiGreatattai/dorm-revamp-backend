@@ -98,7 +98,7 @@ const register = async (req, res) => {
         if (user) {
             // Send Verification Email
             try {
-                const message = `Welcome to Dorm Revamp! Please use the following code to verify your email address: ${verificationToken}`;
+                const message = `Welcome to Dorm! Please use the following code to verify your email address: ${verificationToken}`;
                 await sendEmail({
                     email: user.email,
                     subject: 'Email Verification',

@@ -1,4 +1,4 @@
-# Dorm Revamp Backend - Quick Start Guide
+# Dorm Backend - Quick Start Guide
 
 ## Setup Instructions
 
@@ -12,7 +12,7 @@ npm install
 Create a `.env` file in the backend directory with:
 ```env
 PORT=5001
-MONGODB_URI=mongodb://localhost:27017/dorm_revamp
+MONGODB_URI=mongodb://localhost:27017/dorm
 JWT_SECRET=your_super_secret_jwt_key_here
 NODE_ENV=development
 ```
