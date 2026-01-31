@@ -9,6 +9,8 @@ const { createNotification } = require('./notificationController');
 // @route   GET /api/market/items
 // @access  Public
 const getItems = async (req, res) => {
+    console.log('🛒 [Backend] getItems called with query:', req.query);
+    const startTime = Date.now();
     try {
         const { type, category, search, minPrice, maxPrice, condition, page = 1, limit = 20 } = req.query;
         const skip = (page - 1) * limit;
@@ -37,6 +39,8 @@ const getItems = async (req, res) => {
             query.ownerId = { $nin: req.user.blockedUsers };
         }
 
+        console.log('🔍 [Backend] Market query:', JSON.stringify(query));
+
         const items = await MarketItem.find(query)
             .populate('ownerId', 'name avatar university')
             .sort({ createdAt: -1 })
@@ -44,6 +48,9 @@ const getItems = async (req, res) => {
             .limit(parseInt(limit));
 
         const total = await MarketItem.countDocuments(query);
+        const duration = Date.now() - startTime;
+
+        console.log(`✅ [Backend] getItems success: found ${items.length} items (Total: ${total}) in ${duration}ms`);
 
         res.json({
             items,
@@ -52,6 +59,7 @@ const getItems = async (req, res) => {
             total
         });
     } catch (error) {
+        console.error('❌ [Backend] getItems error:', error.message);
         res.status(500).json({ message: error.message });
     }
 };
