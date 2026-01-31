@@ -109,20 +109,26 @@ const getPost = async (req, res) => {
 // @route   POST /api/posts
 // @access  Private
 const createPost = async (req, res) => {
+    console.log('📝 [Backend] createPost started');
+    const startTime = Date.now();
     try {
         const { content, school } = req.body;
 
         let images = [];
         if (req.files && req.files.length > 0) {
+            console.log(`🖼️ [Backend] Processing ${req.files.length} images from upload`);
             images = req.files.map(file => file.path); // Cloudinary URLs
         } else if (req.body.images) {
+            console.log('🖼️ [Backend] Using images from body');
             images = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
         }
 
         if (!content) {
+            console.log('❌ [Backend] createPost: Content is missing');
             return res.status(400).json({ message: 'Content is required' });
         }
 
+        console.log('💾 [Backend] Saving post to database...');
         const post = await Post.create({
             userId: req.user._id,
             content,
@@ -131,6 +137,7 @@ const createPost = async (req, res) => {
             visibility: req.body.visibility || 'public'
         });
 
+        console.log('🔍 [Backend] Polulating post data...');
         const populatedPost = await Post.findById(post._id)
             .populate('userId', 'name avatar university monetizationEnabled');
 
@@ -141,11 +148,15 @@ const createPost = async (req, res) => {
         const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
 
         if (io) {
+            console.log('📡 [Backend] Emitting real-time post event');
             io.emit('post:new', normalizedPost);
         }
 
+        const duration = Date.now() - startTime;
+        console.log(`✅ [Backend] createPost success in ${duration}ms, post ID:`, post._id);
         res.status(201).json(normalizedPost);
     } catch (error) {
+        console.error('❌ [Backend] createPost error:', error.message);
         res.status(500).json({ message: error.message });
     }
 };

@@ -109,20 +109,22 @@ const register = async (req, res) => {
         console.log('✨ [Backend] User created successfully:', user._id);
 
         if (user) {
-            // Send Verification Email
-            try {
-                const message = `Welcome to Dorm! Please use the following code to verify your email address: ${verificationToken}`;
-                await sendEmail({
-                    email: user.email,
-                    subject: 'Email Verification',
-                    message
-                });
-                console.log('📧 [Backend] Verification email sent to:', user.email);
-            } catch (err) {
-                console.log('❌ [Backend] Verification email failed to send:', err.message);
-                // Don't fail registration, user can request resend later
-            }
+            // Send Verification Email (Non-blocking / Fire-and-Forget)
+            const message = `Welcome to Dorm! Please use the following code to verify your email address: ${verificationToken}`;
 
+            console.log('🚀 [Backend] Scheduling verification email (non-blocking)...');
+            sendEmail({
+                email: user.email,
+                subject: 'Email Verification',
+                message
+            }).then(() => {
+                console.log('📧 [Backend] Verification email sent successfully to:', user.email);
+            }).catch(err => {
+                console.log('❌ [Backend] Verification email failed to send:', err.message);
+            });
+
+            // Send response immediately without waiting for email
+            console.log('✅ [Backend] Sending success response immediately to client');
             res.status(201).json({
                 _id: user._id,
                 name: user.name,

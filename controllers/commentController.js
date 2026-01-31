@@ -40,13 +40,17 @@ const getComments = async (req, res) => {
 // @route   POST /api/comments
 // @access  Private
 const createComment = async (req, res) => {
+    console.log('💬 [Backend] createComment started');
+    const startTime = Date.now();
     try {
         const { postId, content, parentCommentId } = req.body;
 
         if (!content) {
+            console.log('❌ [Backend] createComment: Content is missing');
             return res.status(400).json({ message: 'Content is required' });
         }
 
+        console.log('💾 [Backend] Saving comment to database...');
         const comment = await Comment.create({
             postId,
             userId: req.user._id,
@@ -55,6 +59,7 @@ const createComment = async (req, res) => {
         });
 
         // Add comment to post
+        console.log('🔗 [Backend] Linking comment to post:', postId);
         const post = await Post.findById(postId);
         if (post) {
             if (parentCommentId) {
@@ -89,6 +94,7 @@ const createComment = async (req, res) => {
             }
         }
 
+        console.log('🔍 [Backend] Polulating comment data...');
         const populatedComment = await Comment.findById(comment._id)
             .populate('userId', 'name avatar');
 
@@ -98,6 +104,7 @@ const createComment = async (req, res) => {
         // Emit real-time events
         const io = req.app.get('io');
         if (io && post) {
+            console.log('📡 [Backend] Emitting real-time comment and post-update events');
             // Fetch updated post for global feed update
             const updatedPost = await Post.findById(postId)
                 .populate('userId', 'name avatar university');
@@ -138,8 +145,11 @@ const createComment = async (req, res) => {
             }
         }
 
+        const duration = Date.now() - startTime;
+        console.log(`✅ [Backend] createComment success in ${duration}ms`);
         res.status(201).json(normalizedComment);
     } catch (error) {
+        console.error('❌ [Backend] createComment error:', error.message);
         res.status(500).json({ message: error.message });
     }
 };

@@ -54,9 +54,9 @@ const limiter = rateLimit({
 });
 
 const authLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10, // Limit each IP to 10 attempts per hour
-    message: 'Too many authentication attempts, please try again in an hour'
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 attempts per 15 mins
+    message: 'Too many authentication attempts, please try again in 15 minutes'
 });
 
 app.use(express.json());
@@ -68,7 +68,7 @@ app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/posts', require('./routes/postRoutes'));
 app.use('/api/market', require('./routes/marketRoutes'));
-app.use('/api/upload', authLimiter, require('./routes/uploadRoutes'));
+app.use('/api/upload', limiter, require('./routes/uploadRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/housing', require('./routes/housingRoutes'));
 app.use('/api/tours', require('./routes/tourRoutes'));

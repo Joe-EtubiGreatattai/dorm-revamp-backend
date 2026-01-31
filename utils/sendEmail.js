@@ -33,8 +33,15 @@ const sendEmail = async (options) => {
     };
 
     // 3. Send email
-    const info = await transporter.sendMail(message);
-
+    console.log('📧 [Backend] Transporter sending mail...');
+    try {
+        const info = await transporter.sendMail(message);
+        console.log('📧 [Backend] Transporter sent mail. Info:', info.messageId);
+        return info;
+    } catch (error) {
+        console.error('❌ [Backend] Transporter failed:', error);
+        throw error;
+    }
 };
 
 module.exports = sendEmail;
