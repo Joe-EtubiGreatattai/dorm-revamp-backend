@@ -19,19 +19,28 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @access  Public
 const register = async (req, res) => {
+    console.log('🚀 [Backend] Register endpoint hit');
+    console.log('📦 [Backend] Request body:', { ...req.body, password: '***' }); // Hide password
+    if (req.file) console.log('📂 [Backend] File received:', req.file);
+    else console.log('⚠️ [Backend] No file received in req.file');
+
     try {
         const { name, email, password, university, matricNo, identityNumber, identityType, bio } = req.body;
 
         // Validation
         if (!name || !email || !password) {
+            console.log('❌ [Backend] Missing required fields:', { name: !!name, email: !!email, password: !!password });
             return res.status(400).json({ message: 'Please provide all required fields' });
         }
 
         // Check if user exists
         const userExists = await User.findOne({ email });
         if (userExists) {
+            console.log('❌ [Backend] User already exists:', email);
             return res.status(400).json({ message: 'User already exists' });
         }
+
+        console.log('✅ [Backend] User does not exist, proceeding to hash password');
 
         // Hash password
         const salt = await bcrypt.genSalt(12);
@@ -61,6 +70,7 @@ const register = async (req, res) => {
 
         if (req.file) {
             userData.avatar = req.file.path; // Save as Avatar
+            console.log('✅ [Backend] Avatar path set:', userData.avatar);
 
             // If avatar logic was using req.file, we need to separate them.
             // Assuming for this task the uploaded file IS the KYC doc.
@@ -86,6 +96,7 @@ const register = async (req, res) => {
 
         if (req.body.kycDocument) {
             userData.kycDocument = req.body.kycDocument;
+            console.log('✅ [Backend] KYC Document URL received:', userData.kycDocument);
         }
 
         // Generate Verification Token (Securely)
@@ -95,6 +106,7 @@ const register = async (req, res) => {
 
 
         const user = await User.create(userData);
+        console.log('✨ [Backend] User created successfully:', user._id);
 
         if (user) {
             // Send Verification Email
@@ -105,8 +117,9 @@ const register = async (req, res) => {
                     subject: 'Email Verification',
                     message
                 });
+                console.log('📧 [Backend] Verification email sent to:', user.email);
             } catch (err) {
-                console.log('Verification email failed to send');
+                console.log('❌ [Backend] Verification email failed to send:', err.message);
                 // Don't fail registration, user can request resend later
             }
 
@@ -120,9 +133,11 @@ const register = async (req, res) => {
                 token: generateToken(user._id)
             });
         } else {
+            console.log('❌ [Backend] Invalid user data (creation returned null/false)');
             res.status(400).json({ message: 'Invalid user data' });
         }
     } catch (error) {
+        console.error('🔥 [Backend] Registration Error:', error);
         res.status(500).json({ message: error.message });
     }
 };

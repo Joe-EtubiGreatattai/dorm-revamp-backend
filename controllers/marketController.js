@@ -90,8 +90,13 @@ const getItem = async (req, res) => {
 // @access  Private
 const createItem = async (req, res) => {
     console.log('🛒 [Backend] createItem called');
+    console.log('🛒 [Backend] Headers "content-type":', req.headers['content-type']);
     console.log('🛒 [Backend] Request body:', req.body);
     console.log('🛒 [Backend] User ID:', req.user._id);
+
+    if (req.file) console.log('📂 [Backend] Single file received:', req.file);
+    if (req.files) console.log('📂 [Backend] Multiple files received:', req.files);
+
     try {
         const itemData = {
             ...req.body,
