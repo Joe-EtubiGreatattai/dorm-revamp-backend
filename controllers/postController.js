@@ -356,9 +356,10 @@ const bookmarkPost = async (req, res) => {
 // @route   GET /api/posts/user/:userId
 // @access  Public
 const getUserPosts = async (req, res) => {
+    const targetUserId = req.params.userId;
+    console.log('📬 [Backend] Get Posts for user ID:', targetUserId);
     try {
         const { tab } = req.query;
-        const targetUserId = req.params.userId;
 
         // BOLA Check: Block status
         if (req.user) {

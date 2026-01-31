@@ -40,6 +40,12 @@ global.io = io;
 // Make io accessible to routes
 app.set('io', io);
 
+// Global Request Logger for Debugging
+app.use((req, res, next) => {
+    console.log(`🌐 [Backend] ${req.method} ${req.url}`);
+    next();
+});
+
 // Middleware
 app.use(helmet());
 app.use(cors({

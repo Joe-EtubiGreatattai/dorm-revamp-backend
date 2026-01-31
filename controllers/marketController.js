@@ -89,30 +89,34 @@ const getItem = async (req, res) => {
 // @route   POST /api/market/items
 // @access  Private
 const createItem = async (req, res) => {
-    console.log('🛒 [Backend] createItem called');
-    console.log('🛒 [Backend] Headers "content-type":', req.headers['content-type']);
-    console.log('🛒 [Backend] Request body:', req.body);
-    console.log('🛒 [Backend] User ID:', req.user._id);
-
-    if (req.file) console.log('📂 [Backend] Single file received:', req.file);
-    if (req.files) console.log('📂 [Backend] Multiple files received:', req.files);
-
+    console.log('🛒 [Backend] createItem started');
+    const startTime = Date.now();
     try {
+        console.log('🛒 [Backend] Headers "content-type":', req.headers['content-type']);
+        console.log('🛒 [Backend] Request body keys:', Object.keys(req.body));
+        console.log('🛒 [Backend] User details:', { id: req.user._id, name: req.user.name });
+
+        if (!req.body.title || !req.body.price) {
+            console.log('❌ [Backend] createItem: Missing title or price');
+            return res.status(400).json({ message: 'Title and price are required' });
+        }
+
         const itemData = {
             ...req.body,
             ownerId: req.user._id
         };
-        console.log('📝 [Backend] Creating item with data:', itemData);
+        console.log('💾 [Backend] Saving item to database...');
 
         const item = await MarketItem.create(itemData);
-        console.log('✅ [Backend] Item created:', item._id);
+        console.log('🔍 [Backend] Polulating item data...');
         const populatedItem = await MarketItem.findById(item._id)
             .populate('ownerId', 'name avatar university');
 
+        const duration = Date.now() - startTime;
+        console.log(`✅ [Backend] Item created successfully in ${duration}ms, ID:`, item._id);
         res.status(201).json(populatedItem);
     } catch (error) {
-        console.log('❌ [Backend] Error:', error.message);
-        console.log('❌ [Backend] Stack:', error.stack);
+        console.error('❌ [Backend] createItem error:', error.message);
         res.status(500).json({ message: error.message });
     }
 };

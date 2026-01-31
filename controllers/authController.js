@@ -225,15 +225,23 @@ const searchUsers = async (req, res) => {
 // @access  Private
 const getUserProfile = async (req, res) => {
     try {
-        console.log('Fetching user profile for ID:', req.params.id);
+        console.log('👤 [Backend] Get Profile for ID:', req.params.id);
+
+        if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null' || req.params.id === '[object Object]') {
+            console.log('❌ [Backend] Invalid ID received:', req.params.id);
+            return res.status(400).json({ message: 'Invalid User ID' });
+        }
+
         const user = await User.findById(req.params.id).select('-password');
         if (!user) {
-            console.log('User not found in DB for ID:', req.params.id);
+            console.log('❌ [Backend] User not found in DB for ID:', req.params.id);
             return res.status(404).json({ message: 'User not found' });
         }
+
+        console.log('✅ [Backend] User found:', user.name);
         res.json(user);
     } catch (error) {
-        console.error('Error in getUserProfile:', error);
+        console.error('❌ [Backend] Error in getUserProfile:', error.message);
         res.status(500).json({ message: error.message });
     }
 };
