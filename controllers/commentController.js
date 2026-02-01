@@ -40,18 +40,13 @@ const getComments = async (req, res) => {
 // @route   POST /api/comments
 // @access  Private
 const createComment = async (req, res) => {
-    console.log('💬 [Backend] createComment started');
-    const startTime = Date.now();
     try {
         const { postId, content, parentCommentId } = req.body;
-        console.log(`💬 [Backend] createComment: postId=${postId}, parentCommentId=${parentCommentId}`);
 
         if (!content) {
-            console.log('❌ [Backend] createComment: Content is missing');
             return res.status(400).json({ message: 'Content is required' });
         }
 
-        console.log('💾 [Backend] Saving comment to database...');
         const comment = await Comment.create({
             postId,
             userId: req.user._id,
@@ -59,20 +54,13 @@ const createComment = async (req, res) => {
             parentCommentId: parentCommentId || null
         });
 
-        // Add comment to post
-        console.log('🔗 [Backend] Linking comment to post:', postId);
         const post = await Post.findById(postId);
         if (post) {
             if (parentCommentId) {
-                // Add to parent comment replies
-                console.log('🔍 [Backend] Finding parent comment:', parentCommentId);
                 const parentComment = await Comment.findById(parentCommentId);
                 if (parentComment) {
-                    console.log('✅ [Backend] Parent comment found, adding reply');
                     parentComment.replies.push(comment._id);
                     await parentComment.save();
-                } else {
-                    console.log('❌ [Backend] Parent comment NOT found');
                 }
             } else {
                 post.comments.push(comment._id);
