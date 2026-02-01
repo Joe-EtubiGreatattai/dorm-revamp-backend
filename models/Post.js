@@ -18,6 +18,10 @@ const postSchema = new mongoose.Schema({
         enum: ['public', 'school'],
         default: 'public'
     },
+    isAnonymous: {
+        type: Boolean,
+        default: false
+    },
 
     likes: [{
         type: mongoose.Schema.Types.ObjectId,

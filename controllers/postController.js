@@ -1,6 +1,25 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
 
+const normalizePost = (post, currentUser) => {
+    const p = post.toObject ? post.toObject() : post;
+    const isAuthor = currentUser && p.userId?._id?.toString() === currentUser._id.toString();
+
+    if (p.isAnonymous && !isAuthor) {
+        return {
+            ...p,
+            userId: 'anonymous',
+            user: {
+                _id: 'anonymous',
+                name: 'Anonymous',
+                avatar: 'https://ui-avatars.com/api/?name=A&background=random',
+                university: p.userId?.university
+            }
+        };
+    }
+    return { ...p, user: p.userId, userId: p.userId?._id || p.userId };
+};
+
 // @desc    Get all posts for feed
 // @route   GET /api/posts/feed
 // @access  Private
@@ -48,10 +67,7 @@ const getFeed = async (req, res) => {
 
         const total = await Post.countDocuments(query);
 
-        const normalizedPosts = posts.map(post => {
-            const p = post.toObject();
-            return { ...p, user: p.userId, userId: p.userId?._id };
-        });
+        const normalizedPosts = posts.map(post => normalizePost(post, req.user));
 
         res.json({
             posts: normalizedPosts,
@@ -98,8 +114,7 @@ const getPost = async (req, res) => {
             }
         }
 
-        const p = post.toObject();
-        res.json({ ...p, user: p.userId, userId: p.userId?._id });
+        res.json(normalizePost(post, req.user));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -136,7 +151,8 @@ const createPost = async (req, res) => {
             video: req.body.video,
             locations: req.body.locations,
             school: req.user.university,
-            visibility: req.body.visibility || 'public'
+            visibility: req.body.visibility || 'public',
+            isAnonymous: req.body.isAnonymous === true
         });
 
         console.log('🔍 [Backend] Polulating post data...');
@@ -146,8 +162,7 @@ const createPost = async (req, res) => {
         // Emit real-time event
         const io = req.app.get('io');
 
-        const p = populatedPost.toObject();
-        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+        const normalizedPost = normalizePost(populatedPost, req.user);
 
         if (io) {
             console.log('📡 [Backend] Emitting real-time post event');
@@ -240,8 +255,7 @@ const likePost = async (req, res) => {
             { new: true }
         ).populate('userId', 'name avatar university followers');
 
-        const p = updatedPost.toObject();
-        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+        const normalizedPost = normalizePost(updatedPost, req.user);
 
         // Monetization logic
         const author = updatedPost.userId;
@@ -299,8 +313,7 @@ const sharePost = async (req, res) => {
 
         if (!updatedPost) return res.status(404).json({ message: 'Post not found' });
 
-        const p = updatedPost.toObject();
-        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+        const normalizedPost = normalizePost(updatedPost, req.user);
 
         const io = req.app.get('io');
         if (io) io.emit('post:updated', normalizedPost);
@@ -344,8 +357,7 @@ const bookmarkPost = async (req, res) => {
             { new: true }
         ).populate('userId', 'name avatar university monetizationEnabled');
 
-        const p = updatedPost.toObject();
-        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+        const normalizedPost = normalizePost(updatedPost, req.user);
 
         const io = req.app.get('io');
         if (io) io.emit('post:updated', normalizedPost);
@@ -388,8 +400,7 @@ const getUserPosts = async (req, res) => {
             .sort({ createdAt: -1 });
 
         const normalizedPosts = posts.map(post => {
-            const p = post.toObject();
-            return { ...p, user: p.userId, userId: p.userId?._id };
+            return normalizePost(post, req.user);
         });
 
         res.json(normalizedPosts);
@@ -456,8 +467,7 @@ const incrementView = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        const p = post.toObject();
-        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
+        const normalizedPost = normalizePost(post, req.user);
 
         // Emit real-time update
         const io = req.app.get('io');
@@ -518,8 +528,7 @@ const getVideos = async (req, res) => {
         const total = await Post.countDocuments(query);
 
         const normalizedPosts = posts.map(post => {
-            const p = post.toObject();
-            return { ...p, user: p.userId, userId: p.userId?._id };
+            return normalizePost(post, req.user);
         });
 
         res.json({
