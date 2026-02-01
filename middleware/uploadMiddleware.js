@@ -25,18 +25,21 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'dorm_revamp',
-        // Simplest config first to isolate signature issues
-        // CloudinaryStorage handles signing automatically
+        resource_type: 'auto', // Support video, image, raw
     },
 });
 
 const fileFilter = (req, file, cb) => {
-    // Allowed file types: Images and PDF/Doc for KYC
+    // Allowed file types: Images, Videos, and PDF/Doc for KYC
     const allowedTypes = [
         'image/jpeg',
         'image/jpg',
         'image/png',
         'image/webp',
+        'video/mp4',
+        'video/mpeg',
+        'video/quicktime',
+        'video/x-msvideo',
         'application/pdf',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -45,7 +48,7 @@ const fileFilter = (req, file, cb) => {
     if (allowedTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, PDF, and Word documents are allowed.'), false);
+        cb(new Error('Invalid file type. Only Images, Videos, PDF, and Word documents are allowed.'), false);
     }
 };
 

@@ -133,7 +133,9 @@ const createPost = async (req, res) => {
             userId: req.user._id,
             content,
             images,
-            school: req.user.university, // Use university for school filtering
+            video: req.body.video,
+            locations: req.body.locations,
+            school: req.user.university,
             visibility: req.body.visibility || 'public'
         });
 
@@ -176,10 +178,12 @@ const updatePost = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
-        const { content, images, visibility } = req.body;
+        const { content, images, video, locations, visibility } = req.body;
 
         post.content = content || post.content;
         post.images = images || post.images;
+        post.video = video || post.video;
+        post.locations = locations || post.locations;
         post.visibility = visibility || post.visibility;
 
         await post.save();

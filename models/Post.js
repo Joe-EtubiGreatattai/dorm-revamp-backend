@@ -11,6 +11,8 @@ const postSchema = new mongoose.Schema({
         required: true
     },
     images: [String],
+    video: String,
+    locations: [String],
     school: String,
     visibility: {
         type: String,
