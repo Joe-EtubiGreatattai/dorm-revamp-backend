@@ -109,6 +109,9 @@ const createComment = async (req, res) => {
                 io.emit('post:updated', normalizedPost);
             }
 
+            // Emit new comment event for real-time updates
+            io.emit('comment:new', { postId, comment: normalizedComment });
+
             // Target author for notification
             if (post.userId.toString() !== req.user._id.toString()) {
                 const { createNotification } = require('./notificationController');
