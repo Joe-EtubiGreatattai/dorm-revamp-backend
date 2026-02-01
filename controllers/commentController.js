@@ -40,6 +40,7 @@ const getComments = async (req, res) => {
 // @route   POST /api/comments
 // @access  Private
 const createComment = async (req, res) => {
+    const startTime = Date.now();
     try {
         const { postId, content, parentCommentId } = req.body;
 
