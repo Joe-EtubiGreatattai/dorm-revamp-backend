@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const DeletionRequest = require('../models/DeletionRequest');
+const School = require('../models/School');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -520,20 +521,9 @@ const resendVerificationCode = async (req, res) => {
 // @access  Public
 const getUniversities = async (req, res) => {
     try {
-        // Static list for now
-        const universities = [
-            'University of Lagos',
-            'Obafemi Awolowo University',
-            'University of Ibadan',
-            'University of Nigeria, Nsukka',
-            'Ahmadu Bello University',
-            'Covenant University',
-            'Babcock University',
-            'Lagos State University',
-            'University of Ilorin',
-            'Federal University of Technology, Akure'
-        ];
-        res.json(universities.sort());
+        const schools = await School.find({}).sort({ name: 1 });
+        const universities = schools.map(s => s.name);
+        res.json(universities);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
