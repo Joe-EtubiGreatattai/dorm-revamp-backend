@@ -441,6 +441,27 @@ const notInterested = async (req, res) => {
     }
 };
 
+// @desc    Increment post view count
+// @route   POST /api/posts/:id/view
+// @access  Private
+const incrementView = async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Increment view count
+        post.views = (post.views || 0) + 1;
+        await post.save();
+
+        res.json({ views: post.views });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getFeed,
     getPost,
@@ -452,5 +473,6 @@ module.exports = {
     bookmarkPost,
     getUserPosts,
     reportPost,
-    notInterested
+    notInterested,
+    incrementView
 };
