@@ -189,7 +189,11 @@ const deleteComment = async (req, res) => {
             return res.status(404).json({ message: 'Comment not found' });
         }
 
-        if (comment.userId.toString() !== req.user._id.toString()) {
+        const post = await Post.findById(comment.postId);
+        const isPostAuthor = post && post.userId.toString() === req.user._id.toString();
+        const isCommentAuthor = comment.userId.toString() === req.user._id.toString();
+
+        if (!isCommentAuthor && !isPostAuthor) {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
