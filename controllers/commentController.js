@@ -44,6 +44,7 @@ const createComment = async (req, res) => {
     const startTime = Date.now();
     try {
         const { postId, content, parentCommentId } = req.body;
+        console.log(`💬 [Backend] createComment: postId=${postId}, parentCommentId=${parentCommentId}`);
 
         if (!content) {
             console.log('❌ [Backend] createComment: Content is missing');
@@ -64,10 +65,14 @@ const createComment = async (req, res) => {
         if (post) {
             if (parentCommentId) {
                 // Add to parent comment replies
+                console.log('🔍 [Backend] Finding parent comment:', parentCommentId);
                 const parentComment = await Comment.findById(parentCommentId);
                 if (parentComment) {
+                    console.log('✅ [Backend] Parent comment found, adding reply');
                     parentComment.replies.push(comment._id);
                     await parentComment.save();
+                } else {
+                    console.log('❌ [Backend] Parent comment NOT found');
                 }
             } else {
                 post.comments.push(comment._id);
