@@ -123,9 +123,9 @@ const createPost = async (req, res) => {
             images = Array.isArray(req.body.images) ? req.body.images : [req.body.images];
         }
 
-        if (!content) {
-            console.log('❌ [Backend] createPost: Content is missing');
-            return res.status(400).json({ message: 'Content is required' });
+        if (!content && images.length === 0 && !req.body.video) {
+            console.log('❌ [Backend] createPost: Content and media are both missing');
+            return res.status(400).json({ message: 'Content or media is required' });
         }
 
         console.log('💾 [Backend] Saving post to database...');
