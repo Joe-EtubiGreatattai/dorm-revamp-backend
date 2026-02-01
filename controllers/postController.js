@@ -471,6 +471,68 @@ const incrementView = async (req, res) => {
     }
 };
 
+// @desc    Get all videos for reels feed
+// @route   GET /api/posts/videos
+// @access  Private
+const getVideos = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const query = {
+            video: { $exists: true, $ne: null, $ne: '' },
+            $and: [
+                {
+                    $or: [
+                        { visibility: 'public' },
+                        { $and: [{ visibility: 'school' }, { school: req.user.university }] }
+                    ]
+                }
+            ]
+        };
+
+        // Reuse blocking logic from getFeed
+        const usersToExclude = [...(req.user.blockedUsers || [])];
+        const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id }).select('_id');
+        usersWhoBlockedMe.forEach(u => {
+            if (!usersToExclude.includes(u._id)) {
+                usersToExclude.push(u._id);
+            }
+        });
+
+        if (usersToExclude.length > 0) {
+            query.$and.push({ userId: { $nin: usersToExclude } });
+        }
+
+        if (req.user.notInterestedPosts && req.user.notInterestedPosts.length > 0) {
+            query.$and.push({ _id: { $nin: req.user.notInterestedPosts } });
+        }
+
+        const posts = await Post.find(query)
+            .populate('userId', 'name avatar university monetizationEnabled')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await Post.countDocuments(query);
+
+        const normalizedPosts = posts.map(post => {
+            const p = post.toObject();
+            return { ...p, user: p.userId, userId: p.userId?._id };
+        });
+
+        res.json({
+            posts: normalizedPosts,
+            currentPage: page,
+            totalPages: Math.ceil(total / limit),
+            total
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getFeed,
     getPost,
@@ -483,5 +545,6 @@ module.exports = {
     getUserPosts,
     reportPost,
     notInterested,
-    incrementView
+    incrementView,
+    getVideos
 };

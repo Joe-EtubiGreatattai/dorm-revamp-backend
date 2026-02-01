@@ -12,12 +12,14 @@ const {
     getUserPosts,
     reportPost,
     notInterested,
-    incrementView
+    incrementView,
+    getVideos
 } = require('../controllers/postController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 router.get('/feed', protect, getFeed);
+router.get('/videos', protect, getVideos);
 router.get('/user/:userId', getUserPosts);
 router.get('/:id', getPost);
 router.post('/', protect, createPost);
