@@ -31,7 +31,7 @@ const register = async (req, res) => {
         // Validation
         if (!name || !email || !password) {
             console.log('❌ [Backend] Missing required fields:', { name: !!name, email: !!email, password: !!password });
-            return res.status(400).json({ message: 'Please provide all required fields' });
+            return res.status(400).json({ message: 'Please provide name, email, and password' });
         }
 
         // Check if user exists
@@ -98,6 +98,7 @@ const register = async (req, res) => {
         if (req.body.kycDocument) {
             userData.kycDocument = req.body.kycDocument;
             console.log('✅ [Backend] KYC Document URL received:', userData.kycDocument);
+            userData.kycStatus = 'pending';
         }
 
         // Generate Verification Token (Securely)
@@ -726,10 +727,17 @@ const toggleMonetization = async (req, res) => {
         const newState = !user.monetizationEnabled;
 
         // If trying to enable, check eligibility
-        if (newState && user.followers.length < 1000) {
-            return res.status(400).json({
-                message: 'You need at least 1,000 followers to enable monetization'
-            });
+        if (newState) {
+            if (user.followers.length < 1000) {
+                return res.status(400).json({
+                    message: 'You need at least 1,000 followers to enable monetization'
+                });
+            }
+            if (user.kycStatus !== 'verified') {
+                return res.status(400).json({
+                    message: 'Identity verification (KYC) is required for monetization'
+                });
+            }
         }
 
         user.monetizationEnabled = newState;
@@ -811,6 +819,34 @@ const requestDataDeletion = async (req, res) => {
     }
 };
 
+const requestKyc = async (req, res) => {
+    try {
+        const { identityNumber, identityType, kycDocument } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (identityNumber) user.identityNumber = identityNumber;
+        if (identityType) user.identityType = identityType;
+
+        if (req.file) {
+            user.kycDocument = req.file.path;
+        } else if (kycDocument) {
+            user.kycDocument = kycDocument;
+        }
+
+        user.kycStatus = 'pending';
+        await user.save();
+
+        res.json({
+            message: 'KYC request submitted successfully',
+            kycStatus: user.kycStatus
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     register,
     login,
@@ -836,5 +872,6 @@ module.exports = {
     searchUsers,
     toggleMonetization,
     deleteUser,
-    requestDataDeletion
+    requestDataDeletion,
+    requestKyc
 };

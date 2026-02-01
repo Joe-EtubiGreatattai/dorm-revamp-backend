@@ -15,7 +15,8 @@ const {
     searchUsers, // Import searchUsers
     toggleMonetization,
     deleteUser,
-    requestDataDeletion
+    requestDataDeletion,
+    requestKyc
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -32,6 +33,7 @@ router.get('/users/:id', getUserProfile);
 router.put('/profile', protect, upload.single('avatar'), updateProfile);
 router.put('/password', protect, changePassword);
 router.post('/monetization/toggle', protect, toggleMonetization);
+router.put('/kyc', protect, upload.single('kycDocument'), requestKyc);
 
 // Bank Accounts
 const { addBankAccount, getBankAccounts, resendVerificationCode } = require('../controllers/authController');
