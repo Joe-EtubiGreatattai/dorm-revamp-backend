@@ -446,17 +446,26 @@ const notInterested = async (req, res) => {
 // @access  Private
 const incrementView = async (req, res) => {
     try {
-        const post = await Post.findById(req.params.id);
+        const post = await Post.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { views: 1 } },
+            { new: true }
+        ).populate('userId', 'name avatar university monetizationEnabled');
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Increment view count
-        post.views = (post.views || 0) + 1;
-        await post.save();
+        const p = post.toObject();
+        const normalizedPost = { ...p, user: p.userId, userId: p.userId?._id };
 
-        res.json({ views: post.views });
+        // Emit real-time update
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('post:updated', normalizedPost);
+        }
+
+        res.json(normalizedPost);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
