@@ -491,7 +491,7 @@ const getVideos = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const query = {
-            video: { $exists: true, $ne: null, $ne: '' },
+            video: { $exists: true, $ne: null, $type: 'string', $regex: /^http/ },
             $and: [
                 {
                     $or: [
