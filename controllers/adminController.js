@@ -577,6 +577,30 @@ const deleteElectionNews = async (req, res) => {
     }
 };
 
+// @desc    Update User Role
+// @route   PUT /api/admin/users/:id/role
+// @access  Private/Admin
+const updateUserRole = async (req, res) => {
+    try {
+        const { role } = req.body;
+
+        if (!['user', 'admin'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (user) {
+            user.role = role;
+            await user.save();
+            res.json({ message: `User role updated to ${role}`, role: user.role });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getDashboardStats,
     getAllUsers,
@@ -584,6 +608,7 @@ module.exports = {
     getUserById,
     getOrderById,
     banUser,
+    updateUserRole,
     getAllMarketItems,
     getMarketItemById,
     deleteMarketItem,

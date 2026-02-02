@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-    getDashboardStats, getAllUsers, getAllOrders, getUserById, getOrderById, banUser,
+    getDashboardStats, getAllUsers, getAllOrders, getUserById, getOrderById, banUser, updateUserRole,
     getAllMarketItems, getMarketItemById, deleteMarketItem,
     getAllHousingListings, getHousingListingById, verifyHousingListing, deleteHousingListing,
     getAllElections, getElectionById, createElection, updateElectionStatus, deleteElection,
@@ -14,6 +14,7 @@ router.get('/stats', protect, admin, getDashboardStats);
 router.get('/users', protect, admin, getAllUsers);
 router.get('/users/:id', protect, admin, getUserById);
 router.put('/users/:id/ban', protect, admin, banUser);
+router.put('/users/:id/role', protect, admin, updateUserRole);
 router.get('/orders', protect, admin, getAllOrders);
 router.get('/orders/:id', protect, admin, getOrderById);
 router.get('/market', protect, admin, getAllMarketItems);
