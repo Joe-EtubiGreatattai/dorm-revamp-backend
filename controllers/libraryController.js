@@ -536,6 +536,8 @@ const getPersonalLibrary = async (req, res) => {
             query = { uploaderId: userId };
         } else if (tab === 'downloads') {
             query = { downloaders: userId };
+        } else if (tab === 'summaries') {
+            query = { aiSummary: { $exists: true, $ne: null, $ne: '' } };
         }
 
         const materials = await Material.find(query)
