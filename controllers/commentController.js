@@ -7,10 +7,10 @@ const Post = require('../models/Post');
 const getComments = async (req, res) => {
     try {
         const comments = await Comment.find({ postId: req.params.postId, parentCommentId: null })
-            .populate('userId', 'name avatar')
+            .populate('userId', 'name avatar role')
             .populate({
                 path: 'replies',
-                populate: { path: 'userId', select: 'name avatar' }
+                populate: { path: 'userId', select: 'name avatar role' }
             })
             .sort({ createdAt: -1 });
 
@@ -90,7 +90,7 @@ const createComment = async (req, res) => {
 
         console.log('🔍 [Backend] Polulating comment data...');
         const populatedComment = await Comment.findById(comment._id)
-            .populate('userId', 'name avatar');
+            .populate('userId', 'name avatar role');
 
         const c = populatedComment.toObject();
         const normalizedComment = { ...c, user: c.userId, userId: c.userId?._id };
@@ -101,7 +101,7 @@ const createComment = async (req, res) => {
             console.log('📡 [Backend] Emitting real-time comment and post-update events');
             // Fetch updated post for global feed update
             const updatedPost = await Post.findById(postId)
-                .populate('userId', 'name avatar university');
+                .populate('userId', 'name avatar university role');
 
             if (updatedPost) {
                 const p = updatedPost.toObject();
@@ -226,7 +226,7 @@ const likeComment = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             const updatedPost = await Post.findById(comment.postId)
-                .populate('userId', 'name avatar university');
+                .populate('userId', 'name avatar university role');
 
             if (updatedPost) {
                 const p = updatedPost.toObject();

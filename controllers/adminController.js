@@ -584,7 +584,7 @@ const updateUserRole = async (req, res) => {
     try {
         const { role } = req.body;
 
-        if (!['user', 'admin'].includes(role)) {
+        if (!['user', 'admin', 'ambassador'].includes(role)) {
             return res.status(400).json({ message: 'Invalid role' });
         }
 

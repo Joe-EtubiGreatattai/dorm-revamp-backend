@@ -60,7 +60,7 @@ const getFeed = async (req, res) => {
         }
 
         const posts = await Post.find(query)
-            .populate('userId', 'name avatar university monetizationEnabled')
+            .populate('userId', 'name avatar university monetizationEnabled role')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -86,7 +86,7 @@ const getFeed = async (req, res) => {
 const getPost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id)
-            .populate('userId', 'name avatar university monetizationEnabled') // Updated populate call
+            .populate('userId', 'name avatar university monetizationEnabled role') // Updated populate call
             .populate({
                 path: 'comments',
                 populate: { path: 'userId', select: 'name avatar' }
@@ -157,7 +157,7 @@ const createPost = async (req, res) => {
 
         console.log('🔍 [Backend] Polulating post data...');
         const populatedPost = await Post.findById(post._id)
-            .populate('userId', 'name avatar university monetizationEnabled');
+            .populate('userId', 'name avatar university monetizationEnabled role');
 
         // Emit real-time event
         const io = req.app.get('io');
@@ -253,7 +253,7 @@ const likePost = async (req, res) => {
             req.params.id,
             update,
             { new: true }
-        ).populate('userId', 'name avatar university followers');
+        ).populate('userId', 'name avatar university followers role');
 
         const normalizedPost = normalizePost(updatedPost, req.user);
 
@@ -309,7 +309,7 @@ const sharePost = async (req, res) => {
             req.params.id,
             { $inc: { shares: 1 } },
             { new: true }
-        ).populate('userId', 'name avatar university monetizationEnabled');
+        ).populate('userId', 'name avatar university monetizationEnabled role');
 
         if (!updatedPost) return res.status(404).json({ message: 'Post not found' });
 
@@ -355,7 +355,7 @@ const bookmarkPost = async (req, res) => {
             req.params.id,
             update,
             { new: true }
-        ).populate('userId', 'name avatar university monetizationEnabled');
+        ).populate('userId', 'name avatar university monetizationEnabled role');
 
         const normalizedPost = normalizePost(updatedPost, req.user);
 
@@ -396,7 +396,7 @@ const getUserPosts = async (req, res) => {
         }
 
         const posts = await Post.find(query)
-            .populate('userId', 'name avatar university monetizationEnabled')
+            .populate('userId', 'name avatar university monetizationEnabled role')
             .sort({ createdAt: -1 });
 
         const normalizedPosts = posts.map(post => {
@@ -461,7 +461,7 @@ const incrementView = async (req, res) => {
             req.params.id,
             { $inc: { views: 1 } },
             { new: true }
-        ).populate('userId', 'name avatar university monetizationEnabled');
+        ).populate('userId', 'name avatar university monetizationEnabled role');
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
@@ -520,7 +520,7 @@ const getVideos = async (req, res) => {
         }
 
         const posts = await Post.find(query)
-            .populate('userId', 'name avatar university monetizationEnabled')
+            .populate('userId', 'name avatar university monetizationEnabled role')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
