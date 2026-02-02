@@ -601,6 +601,47 @@ const updateUserRole = async (req, res) => {
     }
 };
 
+const updateOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, eta, pickupPoint } = req.body;
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (status) order.status = status;
+        if (eta) order.eta = eta;
+        if (pickupPoint) order.pickupPoint = pickupPoint;
+
+        await order.save();
+        res.json(order);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const updateMarketItem = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isFreeMerch, stock } = req.body;
+
+        const item = await MarketItem.findById(id);
+        if (!item) {
+            return res.status(404).json({ message: 'Item not found' });
+        }
+
+        if (isFreeMerch !== undefined) item.isFreeMerch = isFreeMerch;
+        if (stock !== undefined) item.stock = stock;
+
+        await item.save();
+        res.json(item);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getDashboardStats,
     getAllUsers,
@@ -628,5 +669,7 @@ module.exports = {
     getElectionNewsById,
     createElectionNews,
     updateElectionNews,
-    deleteElectionNews
+    deleteElectionNews,
+    updateOrder,
+    updateMarketItem
 };

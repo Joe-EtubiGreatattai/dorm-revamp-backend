@@ -119,6 +119,12 @@ const updateStatus = async (req, res) => {
             order.eta = eta;
         }
 
+        // Update pickup point (Admin only for merch)
+        if (req.body.pickupPoint) {
+            console.log('🔄 [BACKEND] Updating Pickup Point:', req.body.pickupPoint);
+            order.pickupPoint = req.body.pickupPoint;
+        }
+
         await order.save();
         console.log('✅ [BACKEND] Order saved successfully');
 

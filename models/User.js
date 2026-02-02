@@ -141,6 +141,10 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    hasClaimedFreeMerch: {
+        type: Boolean,
+        default: false
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

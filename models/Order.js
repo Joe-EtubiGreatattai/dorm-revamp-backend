@@ -42,6 +42,11 @@ const orderSchema = new mongoose.Schema({
     eta: {
         type: String,
         default: 'Calculating...'
+    },
+    pickupPoint: String,
+    isFreeMerchOrder: {
+        type: Boolean,
+        default: false
     }
 }, { timestamps: true });
 

@@ -312,6 +312,75 @@ const purchaseItem = async (req, res) => {
     }
 };
 
+// @desc    Claim Free Merch
+// @route   POST /api/market/merch/:id/claim
+// @access  Private
+const claimFreeMerch = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const item = await MarketItem.findById(req.params.id).session(session);
+
+        if (!item || !item.isFreeMerch) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Free merch item not found' });
+        }
+
+        if (item.status !== 'available' || item.stock <= 0) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Merch is out of stock' });
+        }
+
+        const user = await User.findById(req.user._id).session(session);
+        if (user.hasClaimedFreeMerch) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'You have already claimed a free merch item' });
+        }
+
+        // Create order
+        const order = await Order.create([{
+            buyerId: req.user._id,
+            sellerId: item.ownerId, // Admin ID usually
+            itemId: item._id,
+            amount: 0,
+            status: 'pending',
+            isFreeMerchOrder: true
+        }], { session });
+
+        // Update user
+        user.hasClaimedFreeMerch = true;
+        await user.save({ session });
+
+        // Update item stock
+        item.stock -= 1;
+        if (item.stock <= 0) {
+            item.status = 'sold';
+        }
+        await item.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        // Emit real-time events
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('market:itemUpdated', { itemId: item._id, status: item.status, stock: item.stock });
+        }
+
+        res.status(201).json({
+            message: 'Merch claimed successfully! Check your orders for details.',
+            order: order[0]
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({ message: error.message });
+    }
+};
+
 
 // @desc    Get logged in user items
 // @route   GET /api/market/my-items
@@ -330,8 +399,7 @@ module.exports = {
     getItems,
     getItem,
     getUserItems,
-    createItem,
-    updateItem,
     deleteItem,
-    purchaseItem
+    purchaseItem,
+    claimFreeMerch
 };

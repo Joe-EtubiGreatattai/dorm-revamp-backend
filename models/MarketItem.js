@@ -41,6 +41,14 @@ const marketItemSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    isFreeMerch: {
+        type: Boolean,
+        default: false
+    },
+    stock: {
+        type: Number,
+        default: 1
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('MarketItem', marketItemSchema);
