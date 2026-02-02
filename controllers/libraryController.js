@@ -383,7 +383,13 @@ const downloadMaterial = async (req, res) => {
 // @access  Private
 const getCBT = async (req, res) => {
     try {
-        const cbt = await CBT.findById(req.params.id);
+        let cbt = await CBT.findById(req.params.id);
+
+        if (!cbt) {
+            // Fallback: Check if the ID provided is actually a Material ID
+            cbt = await CBT.findOne({ material: req.params.id });
+        }
+
         if (!cbt) {
             return res.status(404).json({ message: 'CBT not found' });
         }

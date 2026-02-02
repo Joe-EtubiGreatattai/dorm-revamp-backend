@@ -101,6 +101,13 @@ const generateCBT = async (req, res) => {
                         isGenerated: true,
                         createdBy: req.user._id
                     });
+
+                    // Emit socket event for real-time library update
+                    const io = req.app.get('io');
+                    if (io) {
+                        const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
+                        io.emit('new_cbt', populatedCBT);
+                    }
                 } else {
                     savedCBT = existingCBT;
                 }
