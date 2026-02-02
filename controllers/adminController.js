@@ -636,6 +636,15 @@ const updateMarketItem = async (req, res) => {
         if (stock !== undefined) item.stock = stock;
 
         await item.save();
+
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) {
+            const populatedItem = await MarketItem.findById(item._id)
+                .populate('ownerId', 'name avatar university');
+            io.emit('market:itemUpdated', populatedItem);
+        }
+
         res.json(item);
     } catch (error) {
         res.status(500).json({ message: error.message });
