@@ -88,6 +88,7 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/bugs', require('./routes/bugReportRoutes'));
 app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/reviews', require('./routes/reviewRoutes'));
+app.use('/api/ai', require('./routes/aiRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
