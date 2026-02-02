@@ -354,6 +354,7 @@ const cancelOrder = async (req, res) => {
                     message: 'A buyer has cancelled their order'
                 });
                 if (buyer) io.emit('wallet:updated', { userId: buyerId, balance: buyer.walletBalance });
+                io.emit('market:itemUpdated', { itemId: order.itemId, status: 'available' });
             }
 
             await createNotification({

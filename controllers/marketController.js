@@ -122,6 +122,13 @@ const createItem = async (req, res) => {
 
         const duration = Date.now() - startTime;
         console.log(`✅ [Backend] Item created successfully in ${duration}ms, ID:`, item._id);
+
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('market:itemCreated', populatedItem);
+        }
+
         res.status(201).json(populatedItem);
     } catch (error) {
         console.error('❌ [Backend] createItem error:', error.message);
@@ -252,6 +259,7 @@ const purchaseItem = async (req, res) => {
             const io = req.app.get('io');
             if (io) {
                 io.emit('wallet:updated', { userId: req.user._id, balance: buyer.walletBalance });
+                io.emit('market:itemUpdated', { itemId: item._id, status: item.status });
             }
         } catch (err) {
             console.error('Market purchase notification error:', err);
