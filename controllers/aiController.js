@@ -29,6 +29,11 @@ const summarizeDocument = async (req, res) => {
         const response = await result.response;
         const summary = response.text();
 
+        // Auto-save summary to material if requested
+        if (materialId) {
+            await Material.findByIdAndUpdate(materialId, { aiSummary: summary });
+        }
+
         res.json({ summary });
     } catch (error) {
         console.error('Gemini Summarize Error:', error);
@@ -79,7 +84,33 @@ const generateCBT = async (req, res) => {
 
         const questions = JSON.parse(text);
 
-        res.json({ questions });
+        // Save as a permanent CBT if materialId is provided
+        let savedCBT = null;
+        if (materialId) {
+            const material = await Material.findById(materialId);
+            if (material) {
+                // Check if an AI CBT already exists to avoid duplicates
+                const existingCBT = await CBT.findOne({ material: materialId, isGenerated: true });
+                if (!existingCBT) {
+                    savedCBT = await CBT.create({
+                        title: `AI Review: ${material.title}`,
+                        courseCode: material.courseCode || 'AI-GEN',
+                        duration: numQuestions * 2, // 2 mins per question
+                        questions,
+                        material: materialId,
+                        isGenerated: true,
+                        createdBy: req.user._id
+                    });
+                } else {
+                    savedCBT = existingCBT;
+                }
+            }
+        }
+
+        res.json({
+            questions,
+            cbtId: savedCBT ? savedCBT._id : null
+        });
     } catch (error) {
         console.error('Gemini CBT Generation Error:', error);
         res.status(500).json({ message: error.message });

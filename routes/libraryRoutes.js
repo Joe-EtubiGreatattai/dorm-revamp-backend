@@ -15,7 +15,8 @@ const {
     getCBTByMaterial,
     getCategories,
     getPersonalLibrary,
-    addMaterialReview
+    addMaterialReview,
+    getAICBTs
 } = require('../controllers/libraryController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -40,6 +41,7 @@ router.post('/materials/:id/review', protect, addMaterialReview);
 // Advanced Features
 router.get('/cbt/:id', protect, getCBT);
 router.get('/cbt/material/:materialId', protect, getCBTByMaterial);
+router.get('/cbt/ai/all', protect, getAICBTs);
 router.post('/cbt/submit', protect, submitCBT);
 router.post('/summarize', protect, summarizeMaterial);
 

@@ -62,6 +62,7 @@ const materialSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    aiSummary: String,
 }, { timestamps: true });
 
 module.exports = mongoose.model('Material', materialSchema);

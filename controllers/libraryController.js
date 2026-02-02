@@ -610,6 +610,21 @@ const addMaterialReview = async (req, res) => {
     }
 };
 
+// @desc    Get all AI generated CBTs
+// @route   GET /api/library/cbt/ai/all
+// @access  Private
+const getAICBTs = async (req, res) => {
+    try {
+        const cbts = await CBT.find({ isGenerated: true })
+            .populate('material', 'title courseCode coverUrl')
+            .sort({ createdAt: -1 });
+
+        res.json(cbts);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getMaterials,
     getMaterial,
@@ -625,5 +640,6 @@ module.exports = {
     summarizeMaterial,
     getCategories,
     getPersonalLibrary,
-    addMaterialReview
+    addMaterialReview,
+    getAICBTs
 };

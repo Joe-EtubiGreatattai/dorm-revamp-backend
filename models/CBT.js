@@ -10,7 +10,9 @@ const cbtSchema = mongoose.Schema({
         correctAnswer: { type: Number, required: true }, // Index of correct option (0-3)
         explanation: { type: String }
     }],
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    material: { type: mongoose.Schema.Types.ObjectId, ref: 'Material' },
+    isGenerated: { type: Boolean, default: false }
 }, {
     timestamps: true
 });
