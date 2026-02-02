@@ -12,7 +12,7 @@ const reviewSchema = new mongoose.Schema({
     },
     targetType: {
         type: String,
-        enum: ['housing', 'material'],
+        enum: ['housing', 'material', 'vendor'],
         required: true
     },
 

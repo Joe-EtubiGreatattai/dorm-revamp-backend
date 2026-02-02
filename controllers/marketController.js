@@ -3,6 +3,7 @@ const MarketItem = require('../models/MarketItem');
 const Order = require('../models/Order');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Review = require('../models/Review');
 const { createNotification } = require('./notificationController');
 
 // @desc    Get all market items
@@ -52,8 +53,24 @@ const getItems = async (req, res) => {
 
         console.log(`✅ [Backend] getItems success: found ${items.length} items (Total: ${total}) in ${duration}ms`);
 
+        // Attach vendor statistics
+        const itemsWithStats = await Promise.all(items.map(async (item) => {
+            const reviews = await Review.find({ targetId: item.ownerId._id, targetType: 'vendor' });
+            const avgRating = reviews.length > 0
+                ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
+                : 0;
+
+            return {
+                ...item.toObject(),
+                vendorStats: {
+                    avgRating: parseFloat(avgRating.toFixed(1)),
+                    reviewCount: reviews.length
+                }
+            };
+        }));
+
         res.json({
-            items,
+            items: itemsWithStats,
             currentPage: parseInt(page),
             totalPages: Math.ceil(total / limit),
             total
@@ -87,7 +104,19 @@ const getItem = async (req, res) => {
         // Increment views atomically
         await MarketItem.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
 
-        res.json(item);
+        // Fetch vendor statistics
+        const reviews = await Review.find({ targetId: item.ownerId._id, targetType: 'vendor' });
+        const avgRating = reviews.length > 0
+            ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
+            : 0;
+
+        res.json({
+            ...item.toObject(),
+            vendorStats: {
+                avgRating: parseFloat(avgRating.toFixed(1)),
+                reviewCount: reviews.length
+            }
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -204,6 +233,12 @@ const purchaseItem = async (req, res) => {
             await session.abortTransaction();
             session.endSession();
             return res.status(400).json({ message: 'Item is not available' });
+        }
+
+        if (item.ownerId.toString() === req.user._id.toString()) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'You cannot purchase your own item' });
         }
 
         // ATOMIC UPDATE: Deduct from buyer wallet and add to escrow
