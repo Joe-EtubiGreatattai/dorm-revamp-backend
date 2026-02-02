@@ -9,6 +9,7 @@ const {
     getAllElectionNews, getElectionNewsById, createElectionNews, updateElectionNews, deleteElectionNews,
     updateOrder, updateMarketItem
 } = require('../controllers/adminController');
+const { sendTargetedNotifications: sendAdminNotification } = require('../controllers/adminNotificationController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.get('/stats', protect, admin, getDashboardStats);
@@ -46,5 +47,8 @@ router.post('/election-news', protect, admin, createElectionNews);
 router.get('/election-news/:id', protect, admin, getElectionNewsById);
 router.put('/election-news/:id', protect, admin, updateElectionNews);
 router.delete('/election-news/:id', protect, admin, deleteElectionNews);
+
+// Notification Routes
+router.post('/notifications/send', protect, admin, sendAdminNotification);
 
 module.exports = router;

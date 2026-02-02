@@ -89,6 +89,35 @@ const deleteNotification = async (req, res) => {
     }
 };
 
+// @desc    Get single notification
+// @route   GET /api/notifications/:id
+// @access  Private
+const getNotification = async (req, res) => {
+    try {
+        const notification = await Notification.findById(req.params.id)
+            .populate('fromUserId', 'name avatar');
+
+        if (!notification) {
+            return res.status(404).json({ message: 'Notification not found' });
+        }
+
+        if (notification.userId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized' });
+        }
+
+        const n = notification.toObject();
+        const normalizedNotification = {
+            ...n,
+            user: n.fromUserId,
+            content: n.message || n.title
+        };
+
+        res.json(normalizedNotification);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // @desc    Register Expo Push Token
 // @route   POST /api/notifications/push-token
 // @access  Private
@@ -186,6 +215,7 @@ module.exports = {
     markAsRead,
     markAllAsRead,
     deleteNotification,
+    getNotification,
     createNotification,
     registerPushToken
 };
