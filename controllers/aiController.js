@@ -46,7 +46,7 @@ const summarizeDocument = async (req, res) => {
 // @access  Private
 const generateCBT = async (req, res) => {
     try {
-        const { materialId, textContent, numQuestions = 5 } = req.body;
+        const { materialId, textContent, numQuestions = 15 } = req.body;
 
         let content = textContent;
 
