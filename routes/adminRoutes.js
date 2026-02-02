@@ -6,7 +6,8 @@ const {
     getAllHousingListings, getHousingListingById, verifyHousingListing, deleteHousingListing,
     getAllElections, getElectionById, createElection, updateElectionStatus, deleteElection,
     getAllPosts, getPostById, deletePost,
-    getAllElectionNews, getElectionNewsById, createElectionNews, updateElectionNews, deleteElectionNews
+    getAllElectionNews, getElectionNewsById, createElectionNews, updateElectionNews, deleteElectionNews,
+    updateOrder, updateMarketItem
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middleware/authMiddleware');
 

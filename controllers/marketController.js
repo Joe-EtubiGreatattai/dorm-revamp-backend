@@ -398,6 +398,8 @@ const getUserItems = async (req, res) => {
 module.exports = {
     getItems,
     getItem,
+    createItem,
+    updateItem,
     getUserItems,
     deleteItem,
     purchaseItem,
