@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
 const Notification = require('../models/Notification');
 const { createNotification } = require('./notificationController');
 const axios = require('axios'); // For Paystack API
@@ -202,7 +204,6 @@ const transfer = async (req, res) => {
             });
 
             // 5. Send Chat Message (reflection of transfer in conversation)
-            const Conversation = require('../models/Conversation');
             let conv = await Conversation.findOne({
                 participants: { $all: [senderId, recipientId] }
             });
@@ -222,15 +223,17 @@ const transfer = async (req, res) => {
                 transactionId: senderTx[0]._id
             });
 
+            const populatedChatMsg = await Message.findById(chatMsg._id).populate('transactionId');
+
             const io = req.app.get('io');
             if (io) {
-                io.to(conv._id.toString()).emit('message:new', chatMsg);
+                io.to(conv._id.toString()).emit('message:new', populatedChatMsg);
                 io.to(recipientId.toString()).emit('notification:message', {
                     senderId: senderId,
                     senderName: sender.name,
                     content: chatMsg.content,
                     conversationId: conv._id,
-                    message: chatMsg
+                    message: populatedChatMsg
                 });
             }
         } catch (err) {
@@ -336,11 +339,10 @@ const acceptTransfer = async (req, res) => {
                 io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
 
                 // Also update the chat message if it exists
-                const chatMsg = await Message.findOne({ transactionId: senderTx._id });
+                const chatMsg = await Message.findOne({ transactionId: senderTx._id }).populate('transactionId');
                 if (chatMsg) {
-                    chatMsg.isRead = true; // Optional: mark as read
-                    // In a more complex setup, we might update content or status field
-                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg); // Re-emit or a specific status update event
+                    chatMsg.isRead = true;
+                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg);
                 }
             }
         } catch (err) {
@@ -436,7 +438,7 @@ const rejectTransfer = async (req, res) => {
                 io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
 
                 // Update chat message
-                const chatMsg = await Message.findOne({ transactionId: senderTx._id });
+                const chatMsg = await Message.findOne({ transactionId: senderTx._id }).populate('transactionId');
                 if (chatMsg) {
                     io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg);
                 }
