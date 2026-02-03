@@ -89,9 +89,28 @@ const generateCBT = async (req, res) => {
         if (materialId) {
             const material = await Material.findById(materialId);
             if (material) {
-                // Check if an AI CBT already exists to avoid duplicates
-                const existingCBT = await CBT.findOne({ material: materialId, isGenerated: true });
-                if (!existingCBT) {
+                // Check if an AI CBT already exists for THIS user to avoid duplicates
+                let existingCBT = await CBT.findOne({
+                    material: materialId,
+                    isGenerated: true,
+                    createdBy: req.user._id
+                });
+
+                if (existingCBT) {
+                    // Update the existing CBT with new questions
+                    existingCBT.questions = questions;
+                    existingCBT.duration = numQuestions * 2;
+                    existingCBT.title = `AI Review: ${material.title}`;
+                    await existingCBT.save();
+                    savedCBT = existingCBT;
+
+                    // Emit socket event
+                    const io = req.app.get('io');
+                    if (io) {
+                        const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
+                        io.emit('cbt_updated', populatedCBT);
+                    }
+                } else {
                     savedCBT = await CBT.create({
                         title: `AI Review: ${material.title}`,
                         courseCode: material.courseCode || 'AI-GEN',
@@ -108,8 +127,6 @@ const generateCBT = async (req, res) => {
                         const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
                         io.emit('new_cbt', populatedCBT);
                     }
-                } else {
-                    savedCBT = existingCBT;
                 }
             }
         }
