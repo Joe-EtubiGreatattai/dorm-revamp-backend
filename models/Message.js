@@ -20,8 +20,13 @@ const messageSchema = new mongoose.Schema({
     content: String,
     type: {
         type: String,
-        enum: ['text', 'image', 'voice', 'file'],
+        enum: ['text', 'image', 'voice', 'file', 'market_item'],
         default: 'text'
+    },
+    marketItem: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'MarketItem',
+        default: null
     },
     mediaUrl: String,
 

@@ -70,6 +70,7 @@ const getMessages = async (req, res) => {
     try {
         const messages = await Message.find({ conversationId: req.params.id })
             .populate('replyTo')
+            .populate('marketItem')
             .sort({ createdAt: 1 });
 
         // Mark messages as read when fetching
@@ -169,7 +170,7 @@ const sendMessage = async (req, res) => {
         console.log('🟢 [Backend] Conversation ID from params:', req.params.id);
         console.log('🟢 [Backend] User:', { id: req.user._id, name: req.user.name });
 
-        const { content, type, mediaUrl, replyTo } = req.body;
+        const { content, type, mediaUrl, replyTo, marketItem } = req.body;
         const conversationId = req.params.id;
 
         console.log('🟢 [Backend] Content:', content);
@@ -214,6 +215,7 @@ const sendMessage = async (req, res) => {
             type: type || 'text',
             mediaUrl,
             replyTo: replyTo || null,
+            marketItem: marketItem || null,
             isRead: false // New messages are unread
         });
 
@@ -232,7 +234,8 @@ const sendMessage = async (req, res) => {
 
         // Populate message before emitting
         const populatedMessage = await Message.findById(message._id)
-            .populate('replyTo');
+            .populate('replyTo')
+            .populate('marketItem');
 
         // Socket.io emit
         console.log('🟢 [Backend] Getting socket.io instance...');
