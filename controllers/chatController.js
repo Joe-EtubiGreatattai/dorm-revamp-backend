@@ -73,7 +73,7 @@ const getMessages = async (req, res) => {
             .sort({ createdAt: 1 });
 
         // Mark messages as read when fetching
-        await Message.updateMany(
+        const result = await Message.updateMany(
             {
                 conversationId: req.params.id,
                 receiverId: req.user._id,
@@ -81,6 +81,16 @@ const getMessages = async (req, res) => {
             },
             { isRead: true }
         );
+
+        if (result.modifiedCount > 0) {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(req.params.id).emit('message:read_all', {
+                    conversationId: req.params.id,
+                    readerId: req.user._id
+                });
+            }
+        }
 
         res.json(messages);
     } catch (error) {

@@ -39,6 +39,10 @@ const messageSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isDelivered: {
+        type: Boolean,
+        default: false
+    },
     reactions: [{
         userId: {
             type: mongoose.Schema.Types.ObjectId,

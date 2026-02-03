@@ -54,16 +54,56 @@ const setupSocket = (io) => {
                     .populate('receiverId', 'name avatar')
                     .populate('replyTo');
 
-                // Emit to conversation room
+                // Set isDelivered to true if receiver is online
+                if (connectedUsers.has(receiverId.toString())) {
+                    populatedMessage.isDelivered = true;
+                    await Message.findByIdAndUpdate(message._id, { isDelivered: true });
+                }
+
+                // Emit to conversation room (sender and other participants)
                 io.to(conversationId).emit('message:receive', populatedMessage);
 
                 // Emit to receiver's personal room for notification
-                io.to(receiverId).emit('message:notification', {
+                io.to(receiverId.toString()).emit('message:notification', {
                     from: socket.user,
                     message: populatedMessage
                 });
             } catch (error) {
                 socket.emit('error', { message: error.message });
+            }
+        });
+
+        // Message Delivered
+        socket.on('message:delivered', async ({ messageId, conversationId }) => {
+            try {
+                const message = await Message.findByIdAndUpdate(messageId, { isDelivered: true }, { new: true });
+                if (message) {
+                    io.to(conversationId).emit('message:status_update', {
+                        messageId: message._id,
+                        conversationId,
+                        isDelivered: true
+                    });
+                }
+            } catch (err) {
+                console.error('Error in message:delivered:', err);
+            }
+        });
+
+        // Message Read
+        socket.on('message:read', async ({ conversationId, userId: readerId }) => {
+            try {
+                // Mark all messages from other user as read
+                await Message.updateMany(
+                    { conversationId, receiverId: readerId, isRead: false },
+                    { isRead: true }
+                );
+
+                io.to(conversationId).emit('message:read_all', {
+                    conversationId,
+                    readerId
+                });
+            } catch (err) {
+                console.error('Error in message:read:', err);
             }
         });
 
