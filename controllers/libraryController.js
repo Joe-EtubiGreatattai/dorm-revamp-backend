@@ -625,9 +625,38 @@ const getAICBTs = async (req, res) => {
     try {
         const cbts = await CBT.find({ isGenerated: true })
             .populate('material', 'title courseCode coverUrl')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean(); // Convert to plain JS objects to attach extra props
 
-        res.json(cbts);
+        // Aggregate stats for each CBT
+        const populatedCBTs = await Promise.all(cbts.map(async (cbt) => {
+            const results = await CBTResult.find({ cbt: cbt._id }).select('score timeSpent');
+
+            let highScore = 0;
+            let fastestTime = null; // in seconds
+
+            if (results.length > 0) {
+                // Find highest score
+                highScore = Math.max(...results.map(r => r.score));
+
+                // Find fastest time for the highest score (or just fastest time overall? User asked "lowest time that a person has taken")
+                // Let's assume fastest time regardless of score, OR fastest time to complete. 
+                // Usually "Speed Run" implies valid completion.
+                // Let's do: Lowest timeSpent among all attempts.
+                fastestTime = Math.min(...results.map(r => r.timeSpent));
+            }
+
+            return {
+                ...cbt,
+                stats: {
+                    highScore,
+                    fastestTime: fastestTime || 0,
+                    attempts: results.length
+                }
+            };
+        }));
+
+        res.json(populatedCBTs);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
