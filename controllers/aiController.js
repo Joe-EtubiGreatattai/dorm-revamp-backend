@@ -209,33 +209,25 @@ Provide a comprehensive, personalized analysis in JSON format with these fields:
     - Provides encouraging but honest feedback",
     
   "strengths": [
-    "Array of 3-5 specific strengths based on:
-    - Topics/concepts they got right
-    - Any patterns in correct answers
-    - Good time management if applicable
-    - Improvement from historical average if detected"
+    "3-5 SHORT, simple sentences (max 10 words each).
+    Examples: 'Strong in algebra concepts', 'Good time management', 'Improved from last test'
+    Focus on: topics mastered, correct answer patterns, time efficiency, improvements"
   ],
   
   "weaknesses": [
-    "Array of 3-5 specific weaknesses based on:
-    - Topics/concepts they struggled with
-    - Pattern biases (e.g., picking C too often)
-    - Time management issues if detected
-    - Decline from historical performance if applicable
-    - Questions they skipped"
+    "3-5 SHORT, simple sentences (max 10 words each).
+    Examples: 'Struggled with geometry questions', 'Picks option C too much', 'Slower than average'
+    Focus on: weak topics, answer biases, time issues, skipped questions"
   ],
   
   "tips": [
-    "Array of 5-7 highly actionable, specific tips including:
-    - Study recommendations for weak topics
-    - Test-taking strategies (answer distribution, elimination, etc.)
-    - Time management advice
-    - Optimal study/test times based on when they took this test
-    - Practice suggestions based on historical trends"
+    "5-7 SHORT, actionable tips (max 12 words each).
+    Examples: 'Practice more word problems', 'Avoid picking same option repeatedly', 'Study in the morning'
+    Include: study recommendations, test strategies, time advice, practice suggestions"
   ]
 }
 
-Be specific, use the actual question content to identify topics. Be encouraging but constructively critical. Return ONLY valid JSON.`;
+CRITICAL: Keep all list items SHORT and SIMPLE. Use everyday language, not fancy words. Be specific and direct. Return ONLY valid JSON.`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
