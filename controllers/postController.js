@@ -29,16 +29,22 @@ const getFeed = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
 
-        const query = {
-            $and: [
-                {
-                    $or: [
-                        { visibility: 'public' },
-                        { $and: [{ visibility: 'school' }, { school: req.user.university }] }
-                    ]
-                }
-            ]
-        };
+        const tab = req.query.tab || 'All';
+
+        let query = { $and: [] };
+
+        if (tab === 'My') {
+            // My School tab: Show ALL posts (public or school-specific) from MY school
+            query.$and.push({ school: req.user.university });
+        } else {
+            // All Schools tab: Show all public posts OR school-specific posts for my school
+            query.$and.push({
+                $or: [
+                    { visibility: 'public' },
+                    { $and: [{ visibility: 'school' }, { school: req.user.university }] }
+                ]
+            });
+        }
 
         // Find users who have blocked me OR users I have blocked
         const usersToExclude = [...(req.user.blockedUsers || [])];
