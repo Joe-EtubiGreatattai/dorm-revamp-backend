@@ -108,12 +108,13 @@ const setupSocket = (io) => {
         });
 
         // Typing indicator
-        socket.on('typing:start', ({ conversationId, receiverId }) => {
+        socket.on('typing:start', ({ conversationId, receiverId, status }) => {
             io.to(receiverId).emit('typing:indicator', {
                 conversationId,
                 userId,
                 userName: socket.user.name,
-                isTyping: true
+                isTyping: true,
+                status: status || 'typing'
             });
         });
 
