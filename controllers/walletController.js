@@ -200,8 +200,41 @@ const transfer = async (req, res) => {
                 relatedId: senderTx[0]._id,
                 fromUserId: senderId
             });
+
+            // 5. Send Chat Message (reflection of transfer in conversation)
+            const Conversation = require('../models/Conversation');
+            let conv = await Conversation.findOne({
+                participants: { $all: [senderId, recipientId] }
+            });
+
+            if (!conv) {
+                conv = await Conversation.create({
+                    participants: [senderId, recipientId]
+                });
+            }
+
+            const chatMsg = await Message.create({
+                conversationId: conv._id,
+                senderId: senderId,
+                receiverId: recipientId,
+                content: `Sent ₦${amount.toLocaleString()}`,
+                type: 'transfer',
+                transactionId: senderTx[0]._id
+            });
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(conv._id.toString()).emit('message:new', chatMsg);
+                io.to(recipientId.toString()).emit('notification:message', {
+                    senderId: senderId,
+                    senderName: sender.name,
+                    content: chatMsg.content,
+                    conversationId: conv._id,
+                    message: chatMsg
+                });
+            }
         } catch (err) {
-            console.error('Notification error', err);
+            console.error('Post-transfer tasks error', err);
         }
 
         res.json({
@@ -301,6 +334,14 @@ const acceptTransfer = async (req, res) => {
             if (io) {
                 io.emit('wallet:updated', { userId: recipient._id, balance: recipient.walletBalance });
                 io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
+
+                // Also update the chat message if it exists
+                const chatMsg = await Message.findOne({ transactionId: senderTx._id });
+                if (chatMsg) {
+                    chatMsg.isRead = true; // Optional: mark as read
+                    // In a more complex setup, we might update content or status field
+                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg); // Re-emit or a specific status update event
+                }
             }
         } catch (err) {
             console.error('Notification error', err);
@@ -393,6 +434,12 @@ const rejectTransfer = async (req, res) => {
             if (io) {
                 // Update sender balance in real-time
                 io.emit('wallet:updated', { userId: senderTx.userId, balance: sender.walletBalance });
+
+                // Update chat message
+                const chatMsg = await Message.findOne({ transactionId: senderTx._id });
+                if (chatMsg) {
+                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg);
+                }
             }
         } catch (err) {
             console.error('Notification error', err);

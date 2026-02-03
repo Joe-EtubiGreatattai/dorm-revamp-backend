@@ -20,8 +20,13 @@ const messageSchema = new mongoose.Schema({
     content: String,
     type: {
         type: String,
-        enum: ['text', 'image', 'voice', 'file', 'market_item'],
+        enum: ['text', 'image', 'voice', 'file', 'market_item', 'transfer'],
         default: 'text'
+    },
+    transactionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Transaction',
+        default: null
     },
     marketItem: {
         type: mongoose.Schema.Types.ObjectId,
