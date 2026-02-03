@@ -212,25 +212,25 @@ Provide a comprehensive, personalized analysis in JSON format with these fields:
     - Provides encouraging but honest feedback",
     
   "strengths": [
-    "3-5 SHORT, simple sentences (max 10 words each).
-    Examples: 'Strong in algebra concepts', 'Good time management', 'Improved from last test'
-    Focus on: topics mastered, correct answer patterns, time efficiency, improvements"
+    "4-5 clear, specific sentences (15-20 words each) in simple language.
+    Examples: 'You showed excellent understanding of phase sequencing and correctly identified most implementation details', 'Your time management was efficient, completing the test faster than your average'
+    Focus on: specific topics/concepts mastered, patterns in correct answers, time efficiency, improvement trends"
   ],
   
   "weaknesses": [
-    "3-5 SHORT, simple sentences (max 10 words each).
-    Examples: 'Struggled with geometry questions', 'Picks option C too much', 'Slower than average'
-    Focus on: weak topics, answer biases, time issues, skipped questions"
+    "4-5 clear, specific sentences (15-20 words each) in simple language.
+    Examples: 'You struggled with questions about external benchmarks and often confused competitor features', 'There is a pattern of selecting option C too frequently which suggests guessing'
+    Focus on: specific topics struggled with, answer biases detected, time management issues, questions skipped"
   ],
   
   "tips": [
-    "5-7 SHORT, actionable tips (max 12 words each).
-    Examples: 'Practice more word problems', 'Avoid picking same option repeatedly', 'Study in the morning'
-    Include: study recommendations, test strategies, time advice, practice suggestions"
+    "6-8 actionable, specific tips (15-20 words each) in simple language.
+    Examples: 'Review the differences between various AI platforms and their specific use cases to improve accuracy', 'Practice distributing your answers more evenly across all options to reduce guessing patterns'
+    Include: specific study topics, test-taking strategies, time management advice, optimal study times, practice recommendations"
   ]
 }
 
-CRITICAL: Keep all list items SHORT and SIMPLE. Use everyday language, not fancy words. Be specific and direct. Return ONLY valid JSON.`;
+IMPORTANT: Be specific and detailed but use everyday language. Each point should give real value and actionable insight. Return ONLY valid JSON.`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
