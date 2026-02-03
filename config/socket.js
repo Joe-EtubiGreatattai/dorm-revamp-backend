@@ -1,5 +1,7 @@
 const { authenticateSocket } = require('../middleware/socketAuthMiddleware');
 const Message = require('../models/Message');
+const User = require('../models/User'); // Import User model
+const { sendPushNotification } = require('../utils/pushService'); // Import push service
 
 const connectedUsers = new Map(); // userId -> socketId
 
@@ -164,7 +166,7 @@ const setupSocket = (io) => {
 
         // ============ CALLING EVENTS (SIGNALING) ============
 
-        socket.on('call:start', ({ receiverId, isVideo }) => {
+        socket.on('call:start', async ({ receiverId, isVideo }) => {
             console.log(`Call started from ${userId} to ${receiverId}`);
             const caller = {
                 _id: userId,
@@ -172,6 +174,25 @@ const setupSocket = (io) => {
                 avatar: socket.user.avatar
             };
             io.to(receiverId).emit('call:incoming', { caller, isVideo });
+
+            // Send Push Notification for background/killed state
+            try {
+                const receiver = await User.findById(receiverId);
+                if (receiver && receiver.pushTokens?.length > 0) {
+                    await sendPushNotification(
+                        receiver.pushTokens,
+                        'Incoming Call',
+                        `${socket.user.name} is calling you...`,
+                        {
+                            type: 'call_incoming',
+                            caller,
+                            isVideo
+                        }
+                    );
+                }
+            } catch (error) {
+                console.error('Error sending call push notification:', error);
+            }
         });
 
         socket.on('call:accept', ({ callerId }) => {
