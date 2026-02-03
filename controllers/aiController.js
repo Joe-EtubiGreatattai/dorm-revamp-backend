@@ -89,44 +89,24 @@ const generateCBT = async (req, res) => {
         if (materialId) {
             const material = await Material.findById(materialId);
             if (material) {
-                // Check if an AI CBT already exists for THIS user to avoid duplicates
-                let existingCBT = await CBT.findOne({
+                // Always create a new CBT for every generation attempt as requested
+                savedCBT = await CBT.create({
+                    title: `AI Review: ${material.title}`,
+                    courseCode: material.courseCode || 'AI-GEN',
+                    duration: numQuestions * 2, // 2 mins per question
+                    questions,
                     material: materialId,
                     isGenerated: true,
                     createdBy: req.user._id
                 });
 
-                if (existingCBT) {
-                    // Update the existing CBT with new questions
-                    existingCBT.questions = questions;
-                    existingCBT.duration = numQuestions * 2;
-                    existingCBT.title = `AI Review: ${material.title}`;
-                    await existingCBT.save();
-                    savedCBT = existingCBT;
+                console.log('✅ Generated CBT Saved:', JSON.stringify(savedCBT, null, 2));
 
-                    // Emit socket event
-                    const io = req.app.get('io');
-                    if (io) {
-                        const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
-                        io.emit('cbt_updated', populatedCBT);
-                    }
-                } else {
-                    savedCBT = await CBT.create({
-                        title: `AI Review: ${material.title}`,
-                        courseCode: material.courseCode || 'AI-GEN',
-                        duration: numQuestions * 2, // 2 mins per question
-                        questions,
-                        material: materialId,
-                        isGenerated: true,
-                        createdBy: req.user._id
-                    });
-
-                    // Emit socket event for real-time library update
-                    const io = req.app.get('io');
-                    if (io) {
-                        const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
-                        io.emit('new_cbt', populatedCBT);
-                    }
+                // Emit socket event for real-time library update
+                const io = req.app.get('io');
+                if (io) {
+                    const populatedCBT = await CBT.findById(savedCBT._id).populate('material', 'title courseCode coverUrl');
+                    io.emit('new_cbt', populatedCBT);
                 }
             }
         }
