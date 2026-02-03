@@ -133,6 +133,9 @@ const generateCBTReport = async (req, res) => {
             return res.status(400).json({ message: 'Missing questions or answers' });
         }
 
+        // Ensure timeSpent is a valid number
+        const validTimeSpent = timeSpent && !isNaN(timeSpent) ? parseInt(timeSpent) : 0;
+
         // Fetch user's historical CBT performance
         const CBTResult = require('../models/CBTResult');
         const historicalResults = await CBTResult.find({ user: userId })
@@ -161,7 +164,7 @@ const generateCBTReport = async (req, res) => {
 
         // Construct detailed performance data
         let performanceData = `Score: ${score}/${totalQuestions} (${Math.round((score / totalQuestions) * 100)}%)
-Time Taken: ${Math.floor(timeSpent / 60)} minutes ${timeSpent % 60} seconds
+Time Taken: ${Math.floor(validTimeSpent / 60)} minutes ${validTimeSpent % 60} seconds
 Time of Day: ${timeOfDay} (${currentHour}:00)
 
 Historical Performance:
@@ -204,7 +207,7 @@ Provide a comprehensive, personalized analysis in JSON format with these fields:
 {
   "overallAnalysis": "A detailed 3-4 sentence paragraph that:
     - Acknowledges their score and compares it to their historical performance
-    - Comments on time management (was ${timeSpent}s efficient for ${totalQuestions} questions?)
+    - Comments on time management (was ${validTimeSpent}s efficient for ${totalQuestions} questions?)
     - Notes the time of day they took the test and if it might affect performance
     - Provides encouraging but honest feedback",
     
