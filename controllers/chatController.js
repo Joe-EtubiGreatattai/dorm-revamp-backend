@@ -230,6 +230,10 @@ const sendMessage = async (req, res) => {
         conversation.lastMessageAt = Date.now();
         await conversation.save();
 
+        // Populate message before emitting
+        const populatedMessage = await Message.findById(message._id)
+            .populate('replyTo');
+
         // Socket.io emit
         console.log('🟢 [Backend] Getting socket.io instance...');
         const io = req.app.get('io');
@@ -240,10 +244,9 @@ const sendMessage = async (req, res) => {
             // Convert conversationId to string for socket rooms
             const roomId = conversationId.toString();
             console.log('🟢 [Backend] Room ID (converted to string):', roomId);
-            console.log('🟢 [Backend] Message object being emitted:', JSON.stringify(message, null, 2));
 
             console.log('📡 [Backend] Emitting message:new to room:', roomId);
-            io.to(roomId).emit('message:new', message);
+            io.to(roomId).emit('message:new', populatedMessage);
             console.log('✅ [Backend] message:new emitted successfully');
             // Also notify receiver if they are not in the room
             console.log('📡 [Backend] Emitting notification:message to user:', receiverId.toString());
@@ -251,12 +254,13 @@ const sendMessage = async (req, res) => {
                 senderId: req.user._id,
                 senderName: req.user.name,
                 content: content,
-                conversationId
+                conversationId,
+                message: populatedMessage
             });
         }
 
         console.log('🟢 [Backend] Sending response to client');
-        res.status(201).json(message);
+        res.status(201).json(populatedMessage);
     } catch (error) {
         console.error('❌ [Backend] Error in sendMessage:', error);
         console.error('❌ [Backend] Error stack:', error.stack);
