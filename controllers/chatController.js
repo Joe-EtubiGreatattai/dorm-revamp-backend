@@ -69,6 +69,7 @@ const getConversation = async (req, res) => {
 const getMessages = async (req, res) => {
     try {
         const messages = await Message.find({ conversationId: req.params.id })
+            .populate('replyTo')
             .sort({ createdAt: 1 });
 
         // Mark messages as read when fetching
@@ -158,7 +159,7 @@ const sendMessage = async (req, res) => {
         console.log('🟢 [Backend] Conversation ID from params:', req.params.id);
         console.log('🟢 [Backend] User:', { id: req.user._id, name: req.user.name });
 
-        const { content } = req.body;
+        const { content, type, mediaUrl, replyTo } = req.body;
         const conversationId = req.params.id;
 
         console.log('🟢 [Backend] Content:', content);
@@ -200,6 +201,9 @@ const sendMessage = async (req, res) => {
             senderId: req.user._id,
             receiverId,
             content,
+            type: type || 'text',
+            mediaUrl,
+            replyTo: replyTo || null,
             isRead: false // New messages are unread
         });
 
@@ -250,11 +254,121 @@ const sendMessage = async (req, res) => {
     }
 };
 
+// @desc    Edit a message
+// @route   PUT /api/chat/messages/:messageId
+// @access  Private
+const editMessage = async (req, res) => {
+    try {
+        const { content } = req.body;
+        const message = await Message.findById(req.params.messageId);
+
+        if (!message) {
+            return res.status(404).json({ message: 'Message not found' });
+        }
+
+        if (message.senderId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized to edit this message' });
+        }
+
+        message.content = content;
+        message.isEdited = true;
+        await message.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(message.conversationId.toString()).emit('message:edit', message);
+        }
+
+        res.json(message);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Delete a message
+// @route   DELETE /api/chat/messages/:messageId
+// @access  Private
+const deleteMessage = async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.messageId);
+
+        if (!message) {
+            return res.status(404).json({ message: 'Message not found' });
+        }
+
+        if (message.senderId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized to delete this message' });
+        }
+
+        message.isDeleted = true;
+        message.content = 'This message was deleted';
+        message.mediaUrl = null;
+        await message.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(message.conversationId.toString()).emit('message:delete', {
+                messageId: message._id,
+                conversationId: message.conversationId
+            });
+        }
+
+        res.json(message);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    React to a message
+// @route   POST /api/chat/messages/:messageId/react
+// @access  Private
+const reactToMessage = async (req, res) => {
+    try {
+        const { emoji } = req.body;
+        const message = await Message.findById(req.params.messageId);
+
+        if (!message) {
+            return res.status(404).json({ message: 'Message not found' });
+        }
+
+        // Check if user already reacted with this emoji
+        const existingReactionIndex = message.reactions.findIndex(
+            r => r.userId.toString() === req.user._id.toString() && r.emoji === emoji
+        );
+
+        if (existingReactionIndex !== -1) {
+            // Remove reaction if already exists
+            message.reactions.splice(existingReactionIndex, 1);
+        } else {
+            // Add new reaction
+            message.reactions.push({ userId: req.user._id, emoji });
+        }
+
+        await message.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(message.conversationId.toString()).emit('message:react', {
+                messageId: message._id,
+                reactions: message.reactions,
+                conversationId: message.conversationId
+            });
+        }
+
+        res.json(message);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getConversations,
     getConversation,
     getMessages,
     createConversation,
     sendMessage,
-    getUnreadCount
+    getUnreadCount,
+    editMessage,
+    deleteMessage,
+    reactToMessage
 };

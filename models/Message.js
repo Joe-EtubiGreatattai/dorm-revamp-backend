@@ -25,6 +25,28 @@ const messageSchema = new mongoose.Schema({
     },
     mediaUrl: String,
 
+    // Advanced Features
+    replyTo: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Message',
+        default: null
+    },
+    isEdited: {
+        type: Boolean,
+        default: false
+    },
+    isDeleted: {
+        type: Boolean,
+        default: false
+    },
+    reactions: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        emoji: String
+    }],
+
     isRead: {
         type: Boolean,
         default: false

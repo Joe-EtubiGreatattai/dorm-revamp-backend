@@ -12,5 +12,8 @@ router.get('/conversations/:id/messages', chatController.getMessages);
 router.get('/unread-count', chatController.getUnreadCount);
 router.post('/conversations', chatController.createConversation);
 router.post('/conversations/:id/messages', chatController.sendMessage);
+router.put('/messages/:messageId', chatController.editMessage);
+router.delete('/messages/:messageId', chatController.deleteMessage);
+router.post('/messages/:messageId/react', chatController.reactToMessage);
 
 module.exports = router;

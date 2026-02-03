@@ -36,7 +36,7 @@ const setupSocket = (io) => {
         // Send message
         socket.on('message:send', async (data) => {
             try {
-                const { conversationId, receiverId, content, type, mediaUrl } = data;
+                const { conversationId, receiverId, content, type, mediaUrl, replyTo } = data;
 
                 // Create message in database
                 const message = await Message.create({
@@ -45,12 +45,14 @@ const setupSocket = (io) => {
                     receiverId,
                     content,
                     type: type || 'text',
-                    mediaUrl
+                    mediaUrl,
+                    replyTo: replyTo || null
                 });
 
                 const populatedMessage = await Message.findById(message._id)
                     .populate('senderId', 'name avatar')
-                    .populate('receiverId', 'name avatar');
+                    .populate('receiverId', 'name avatar')
+                    .populate('replyTo');
 
                 // Emit to conversation room
                 io.to(conversationId).emit('message:receive', populatedMessage);
