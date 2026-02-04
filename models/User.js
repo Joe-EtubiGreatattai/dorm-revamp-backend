@@ -20,6 +20,8 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    banReason: String,
+    banExpires: Date,
     password: {
         type: String,
         required: true,

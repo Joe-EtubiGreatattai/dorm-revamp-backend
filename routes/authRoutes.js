@@ -16,7 +16,8 @@ const {
     toggleMonetization,
     deleteUser,
     requestDataDeletion,
-    requestKyc
+    requestKyc,
+    submitAppeal
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -59,5 +60,6 @@ router.post('/users/:id/block', protect, blockUser);
 router.post('/users/:id/unblock', protect, unblockUser);
 
 router.post('/request-data-deletion', requestDataDeletion);
+router.post('/appeal', submitAppeal);
 
 module.exports = router;

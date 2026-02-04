@@ -156,7 +156,21 @@ const login = async (req, res) => {
         // Check for user email
         const user = await User.findOne({ email });
 
-        if (user && (await bcrypt.compare(password, user.password))) {
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        // Check if user is banned
+        if (user.isBanned) {
+            return res.status(403).json({
+                message: 'Your account has been banned.',
+                reason: user.banReason,
+                expiresAt: user.banExpires,
+                isBanned: true
+            });
+        }
+
+        if (await bcrypt.compare(password, user.password)) {
             res.json({
                 _id: user._id,
                 name: user.name,
@@ -177,12 +191,54 @@ const login = async (req, res) => {
     }
 };
 
+const Appeal = require('../models/Appeal');
+
+// @desc    Submit Appeal
+// @route   POST /api/auth/appeal
+// @access  Public
+const submitAppeal = async (req, res) => {
+    try {
+        const { email, message } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!user.isBanned) {
+            return res.status(400).json({ message: 'User is not banned' });
+        }
+
+        const appeal = await Appeal.create({
+            userId: user._id,
+            message
+        });
+
+        res.status(201).json({ message: 'Appeal submitted successfully', appeal });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
 const getMe = async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.isBanned) {
+            return res.status(403).json({
+                message: 'Your account has been banned.',
+                reason: user.banReason,
+                expiresAt: user.banExpires,
+                isBanned: true
+            });
+        }
+
         res.json(user);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -873,5 +929,6 @@ module.exports = {
     toggleMonetization,
     deleteUser,
     requestDataDeletion,
-    requestKyc
+    requestKyc,
+    submitAppeal
 };

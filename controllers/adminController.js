@@ -651,6 +651,55 @@ const updateMarketItem = async (req, res) => {
     }
 };
 
+const Appeal = require('../models/Appeal');
+
+// @desc    Get All Appeals
+// @route   GET /api/admin/appeals
+// @access  Private/Admin
+const getAllAppeals = async (req, res) => {
+    try {
+        const appeals = await Appeal.find()
+            .populate('userId', 'name email avatar')
+            .sort({ createdAt: -1 });
+        res.json(appeals);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Update Appeal Status
+// @route   PUT /api/admin/appeals/:id
+// @access  Private/Admin
+const updateAppealStatus = async (req, res) => {
+    try {
+        const { status, adminNotes } = req.body;
+        const appeal = await Appeal.findById(req.params.id);
+
+        if (!appeal) {
+            return res.status(404).json({ message: 'Appeal not found' });
+        }
+
+        appeal.status = status;
+        appeal.adminNotes = adminNotes || appeal.adminNotes;
+        await appeal.save();
+
+        // If approved, unban the user
+        if (status === 'approved') {
+            const user = await User.findById(appeal.userId);
+            if (user) {
+                user.isBanned = false;
+                user.banReason = undefined;
+                user.banExpires = undefined;
+                await user.save();
+            }
+        }
+
+        res.json({ message: 'Appeal status updated', appeal });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getDashboardStats,
     getAllUsers,
@@ -680,5 +729,7 @@ module.exports = {
     updateElectionNews,
     deleteElectionNews,
     updateOrder,
-    updateMarketItem
+    updateMarketItem,
+    getAllAppeals,
+    updateAppealStatus
 };
