@@ -8,6 +8,13 @@ const createRestriction = async (req, res) => {
     try {
         const { tab, scope, targetId, reason, filters } = req.body;
 
+        console.log('\n🚫 [RESTRICTION] Creating new restriction:');
+        console.log('   Tab:', tab);
+        console.log('   Scope:', scope);
+        console.log('   TargetId:', targetId);
+        console.log('   Reason:', reason);
+        console.log('   Filters:', filters);
+
         // Check for existing active restriction
         const existing = await Restriction.findOne({
             tab,
@@ -17,6 +24,7 @@ const createRestriction = async (req, res) => {
         });
 
         if (existing) {
+            console.log('   ⚠️ Active restriction already exists\n');
             return res.status(400).json({ message: 'Active restriction already exists for this target.' });
         }
 
@@ -28,6 +36,8 @@ const createRestriction = async (req, res) => {
             filters: filters || {},
             createdBy: req.user._id
         });
+
+        console.log('✅ [RESTRICTION] Created in DB with ID:', restriction._id);
 
         // Emit socket event
         const io = req.app.get('io');
@@ -41,17 +51,28 @@ const createRestriction = async (req, res) => {
                 isActive: true
             };
 
+            console.log('\n📡 [SOCKET] Emitting restriction:active event');
+            console.log('   Payload:', JSON.stringify(payload, null, 2));
+
             if (scope === 'global') {
+                console.log('   Broadcasting to: ALL USERS (global)');
                 io.emit('restriction:active', payload);
             } else if (scope === 'school') {
-                io.to(`school_${targetId}`).emit('restriction:active', payload);
+                const room = `school_${targetId}`;
+                console.log('   Broadcasting to room:', room);
+                io.to(room).emit('restriction:active', payload);
             } else if (scope === 'user') {
+                console.log('   Broadcasting to user:', targetId);
                 io.to(targetId).emit('restriction:active', payload);
             }
+            console.log('✅ [SOCKET] Event emitted successfully\n');
+        } else {
+            console.log('⚠️ [SOCKET] IO not available, cannot emit event\n');
         }
 
         res.status(201).json(restriction);
     } catch (error) {
+        console.error('❌ [RESTRICTION] Error creating restriction:', error.message);
         res.status(500).json({ message: error.message });
     }
 };
@@ -96,14 +117,18 @@ const getAllRestrictions = async (req, res) => {
 // @access  Admin
 const deleteRestriction = async (req, res) => {
     try {
+        console.log('\n🔓 [RESTRICTION] Deleting restriction:', req.params.id);
+
         const restriction = await Restriction.findById(req.params.id);
         if (!restriction) return res.status(404).json({ message: 'Restriction not found' });
 
-        // Hard delete or Soft delete? Requirement implied turning off.
-        // We'll remove it to keep table clean or toggle isActive.
-        // Let's hard delete for simplicity or deactivate.
+        console.log('   Found restriction:');
+        console.log('   Tab:', restriction.tab);
+        console.log('   Scope:', restriction.scope);
+        console.log('   TargetId:', restriction.targetId);
 
         await Restriction.findByIdAndDelete(req.params.id);
+        console.log('✅ [RESTRICTION] Deleted from DB');
 
         // Emit socket event
         const io = req.app.get('io');
@@ -114,13 +139,23 @@ const deleteRestriction = async (req, res) => {
                 targetId: restriction.targetId
             };
 
+            console.log('\n📡 [SOCKET] Emitting restriction:lifted event');
+            console.log('   Payload:', JSON.stringify(payload, null, 2));
+
             if (restriction.scope === 'global') {
+                console.log('   Broadcasting to: ALL USERS (global)');
                 io.emit('restriction:lifted', payload);
             } else if (restriction.scope === 'school') {
-                io.to(`school_${restriction.targetId}`).emit('restriction:lifted', payload);
+                const room = `school_${restriction.targetId}`;
+                console.log('   Broadcasting to room:', room);
+                io.to(room).emit('restriction:lifted', payload);
             } else if (restriction.scope === 'user') {
+                console.log('   Broadcasting to user:', restriction.targetId);
                 io.to(restriction.targetId.toString()).emit('restriction:lifted', payload);
             }
+            console.log('✅ [SOCKET] Event emitted successfully\n');
+        } else {
+            console.log('⚠️ [SOCKET] IO not available, cannot emit event\n');
         }
 
         res.json({ message: 'Restriction removed' });
