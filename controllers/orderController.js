@@ -64,7 +64,90 @@ const getOrder = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
-        res.json(order);
+        // Generate Timeline based on type
+        const type = order.itemId?.type || 'item';
+        let timelineTemplates = {
+            item: [
+                { id: 'pending', title: 'Order Placed', completed: true },
+                { id: 'processing', title: 'Processing', completed: false },
+                { id: 'shipping', title: 'In Transit', completed: false },
+                { id: 'delivered', title: 'Delivered', completed: false }
+            ],
+            food: [
+                { id: 'pending', title: 'Order Placed', completed: true },
+                { id: 'processing', title: 'Preparing', completed: false },
+                { id: 'shipping', title: 'Out for Delivery', completed: false },
+                { id: 'delivered', title: 'Delivered', completed: false }
+            ],
+            service: [
+                { id: 'pending', title: 'Request Sent', completed: true },
+                { id: 'processing', title: 'In Progress', completed: false },
+                { id: 'delivered', title: 'Completed', completed: false }
+            ]
+        };
+
+        let steps = timelineTemplates[type] || timelineTemplates['item'];
+        const statusMap = {
+            pending: 0,
+            processing: 1,
+            shipping: 2,
+            delivered: 3,
+            cancelled: -1
+        };
+
+        // Adjust for Service type (shorter timeline)
+        const currentStatusIndex = statusMap[order.status];
+
+        let timeline = steps.map((step, index) => {
+            // For services, map 'shipping' status from DB to 'processing' visual or skip?
+            // Simplified: If DB status index >= step index, it's completed.
+            // Note: Service has 3 steps. Shipping(2) should map to In Progress(1) visually? 
+            // Better approach: Rely on status string matching or order.
+
+            let isCompleted = false;
+            let isCurrent = false;
+
+            if (order.status === 'cancelled') {
+                isCompleted = index === 0; // Only first step is done
+            } else {
+                // Determine completion based on order of statusMap
+                const stepStatusIndex = statusMap[step.id];
+
+                // Special handling for Service which skips 'shipping'
+                if (type === 'service' && order.status === 'shipping') {
+                    // If backend is 'shipping', for service it means 'In Progress' is still active/done?
+                    // Let's assume 'shipping' isn't used for services, or if it is, it maps to In Progress.
+                    if (step.id === 'processing') isCompleted = true;
+                } else {
+                    if (currentStatusIndex >= stepStatusIndex) isCompleted = true;
+                }
+            }
+
+            // Determine if current (last completed)
+            // This logic will be refined on frontend or here. 
+            // Here: simply mark completed. Frontend finds last completed as current.
+
+            return {
+                title: step.title,
+                time: step.completed ? (index === 0 ? order.createdAt : '-') : '-', // Mock time for now
+                completed: isCompleted,
+                current: false // Will be set by frontend or refined logic
+            };
+        });
+
+        // Set 'current' flag
+        for (let i = timeline.length - 1; i >= 0; i--) {
+            if (timeline[i].completed) {
+                timeline[i].current = true;
+                break;
+            }
+        }
+
+        // Return object with timeline
+        const orderObj = order.toObject();
+        orderObj.timeline = timeline;
+
+        res.json(orderObj);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
