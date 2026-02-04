@@ -49,12 +49,11 @@ const createRestriction = async (req, res) => {
                 io.to(targetId).emit('restriction:active', payload);
             }
         }
-    }
 
         res.status(201).json(restriction);
-} catch (error) {
-    res.status(500).json({ message: error.message });
-}
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
 // @desc    Get active restrictions for current user
