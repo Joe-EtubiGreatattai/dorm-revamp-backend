@@ -6,6 +6,7 @@ const MarketItem = require('../models/MarketItem');
 const Election = require('../models/Election');
 const Post = require('../models/Post');
 const ElectionNews = require('../models/ElectionNews');
+const { sendPushNotification } = require('../utils/pushService');
 
 // @desc    Get Admin Dashboard Stats
 // @route   GET /api/admin/stats
@@ -40,23 +41,35 @@ const getDashboardStats = async (req, res) => {
 // @access  Private/Admin
 const getAllUsers = async (req, res) => {
     try {
-        const { page: pageQuery, keyword: keywordInput } = sanitize(req.query);
+        const { page: pageQuery, keyword: keywordInput, role, status } = sanitize(req.query);
         const pageSize = 20;
         const page = Number(pageQuery) || 1;
-        const keyword = keywordInput
-            ? {
-                name: {
-                    $regex: String(keywordInput),
-                    $options: 'i',
-                },
-            }
-            : {};
 
-        const count = await User.countDocuments({ ...keyword });
-        const users = await User.find({ ...keyword })
+        let query = {};
+
+        if (keywordInput) {
+            query.name = {
+                $regex: String(keywordInput),
+                $options: 'i',
+            };
+        }
+
+        if (role && role !== 'all') {
+            query.role = role;
+        }
+
+        if (status === 'banned') {
+            query.isBanned = true;
+        } else if (status === 'active') {
+            query.isBanned = { $ne: true };
+        }
+
+        const count = await User.countDocuments(query);
+        const users = await User.find(query)
             .limit(pageSize)
             .skip(pageSize * (page - 1))
-            .select('-password');
+            .select('-password')
+            .sort({ createdAt: -1 });
 
         res.json({ users, page, pages: Math.ceil(count / pageSize) });
     } catch (error) {
@@ -141,6 +154,16 @@ const banUser = async (req, res) => {
         if (user) {
             user.isBanned = !user.isBanned;
             await user.save();
+
+            // Send push notification
+            if (user.pushTokens && user.pushTokens.length > 0) {
+                const title = user.isBanned ? 'Account Banned' : 'Account Unbanned';
+                const body = user.isBanned
+                    ? 'Your account has been banned by an administrator.'
+                    : 'Your account has been unbanned. You can now access the platform.';
+                await sendPushNotification(user.pushTokens, title, body);
+            }
+
             res.json({ message: `User ${user.isBanned ? 'banned' : 'unbanned'}`, isBanned: user.isBanned });
         } else {
             res.status(404).json({ message: 'User not found' });
@@ -204,6 +227,12 @@ const deleteMarketItem = async (req, res) => {
     try {
         const item = await MarketItem.findById(req.params.id);
         if (item) {
+            // Notify owner
+            const owner = await User.findById(item.ownerId);
+            if (owner && owner.pushTokens && owner.pushTokens.length > 0) {
+                await sendPushNotification(owner.pushTokens, 'Item Removed', `Your market item "${item.title}" has been removed by an administrator.`);
+            }
+
             await item.deleteOne();
             res.json({ message: 'Item removed' });
         } else {
@@ -277,6 +306,15 @@ const verifyHousingListing = async (req, res) => {
             }
 
             await listing.save();
+
+            // Notify owner
+            const owner = await User.findById(listing.ownerId);
+            if (owner && owner.pushTokens && owner.pushTokens.length > 0) {
+                const title = 'Listing Status Updated';
+                const body = `Your housing listing "${listing.title}" has been ${listing.status}.`;
+                await sendPushNotification(owner.pushTokens, title, body);
+            }
+
             res.json({ message: `Listing status updated to ${listing.status}`, listing });
         } else {
             res.status(404).json({ message: 'Listing not found' });
@@ -293,6 +331,12 @@ const deleteHousingListing = async (req, res) => {
     try {
         const listing = await Housing.findById(req.params.id);
         if (listing) {
+            // Notify owner
+            const owner = await User.findById(listing.ownerId);
+            if (owner && owner.pushTokens && owner.pushTokens.length > 0) {
+                await sendPushNotification(owner.pushTokens, 'Listing Removed', `Your housing listing "${listing.title}" has been removed by an administrator.`);
+            }
+
             await listing.deleteOne();
             res.json({ message: 'Listing removed' });
         } else {
@@ -466,6 +510,12 @@ const deletePost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
         if (post) {
+            // Notify author
+            const author = await User.findById(post.userId);
+            if (author && author.pushTokens && author.pushTokens.length > 0) {
+                await sendPushNotification(author.pushTokens, 'Post Removed', `Your post has been removed by an administrator for violating our community guidelines.`);
+            }
+
             await post.deleteOne();
             res.json({ message: 'Post removed' });
         } else {
@@ -592,6 +642,12 @@ const updateUserRole = async (req, res) => {
         if (user) {
             user.role = role;
             await user.save();
+
+            // Notify user
+            if (user.pushTokens && user.pushTokens.length > 0) {
+                await sendPushNotification(user.pushTokens, 'Role Updated', `Your account role has been updated to ${role}.`);
+            }
+
             res.json({ message: `User role updated to ${role}`, role: user.role });
         } else {
             res.status(404).json({ message: 'User not found' });
@@ -636,6 +692,13 @@ const updateMarketItem = async (req, res) => {
         if (stock !== undefined) item.stock = stock;
 
         await item.save();
+
+        if (isFreeMerch === true) {
+            const owner = await User.findById(item.ownerId);
+            if (owner && owner.pushTokens && owner.pushTokens.length > 0) {
+                await sendPushNotification(owner.pushTokens, 'Item Marked as Free', `Your item "${item.title}" has been marked as free merch by the admin!`);
+            }
+        }
 
         // Emit real-time event
         const io = req.app.get('io');
@@ -690,7 +753,19 @@ const updateAppealStatus = async (req, res) => {
                 user.isBanned = false;
                 user.banReason = undefined;
                 user.banExpires = undefined;
+                user.banReason = undefined;
+                user.banExpires = undefined;
                 await user.save();
+
+                // Notify user
+                if (user.pushTokens && user.pushTokens.length > 0) {
+                    await sendPushNotification(user.pushTokens, 'Appeal Approved', 'Your ban appeal has been approved. You can now access your account.');
+                }
+            }
+        } else if (status === 'rejected') {
+            const user = await User.findById(appeal.userId);
+            if (user && user.pushTokens && user.pushTokens.length > 0) {
+                await sendPushNotification(user.pushTokens, 'Appeal Rejected', 'Your ban appeal has been rejected.');
             }
         }
 
