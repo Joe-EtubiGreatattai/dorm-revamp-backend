@@ -60,15 +60,23 @@ const createRestriction = async (req, res) => {
             } else if (scope === 'school') {
                 const room = `school_${targetId}`;
                 console.log('   Broadcasting to room:', room);
+                // Important: Using io.to(room).emit ensures everyone in that school room gets it
                 io.to(room).emit('restriction:active', payload);
             } else if (scope === 'user') {
-                console.log('   Broadcasting to user:', targetId);
-                io.to(targetId).emit('restriction:active', payload);
+                const room = targetId.toString();
+                console.log('   Broadcasting to user room:', room);
+                io.to(room).emit('restriction:active', payload);
             }
+
+            // Debug: Log room count if possible
+            const rooms = io.sockets.adapter.rooms;
+            if (scope === 'school') console.log(`   Current room ${targetId} size:`, rooms.get(`school_${targetId}`)?.size || 0);
+
             console.log('✅ [SOCKET] Event emitted successfully\n');
         } else {
             console.log('⚠️ [SOCKET] IO not available, cannot emit event\n');
         }
+
 
         res.status(201).json(restriction);
     } catch (error) {
@@ -143,20 +151,22 @@ const deleteRestriction = async (req, res) => {
             console.log('   Payload:', JSON.stringify(payload, null, 2));
 
             if (restriction.scope === 'global') {
-                console.log('   Broadcasting to: ALL USERS (global)');
+                console.log('   Broadcasting lift to: ALL USERS (global)');
                 io.emit('restriction:lifted', payload);
             } else if (restriction.scope === 'school') {
                 const room = `school_${restriction.targetId}`;
-                console.log('   Broadcasting to room:', room);
+                console.log('   Broadcasting lift to room:', room);
                 io.to(room).emit('restriction:lifted', payload);
             } else if (restriction.scope === 'user') {
-                console.log('   Broadcasting to user:', restriction.targetId);
-                io.to(restriction.targetId.toString()).emit('restriction:lifted', payload);
+                const room = restriction.targetId.toString();
+                console.log('   Broadcasting lift to user room:', room);
+                io.to(room).emit('restriction:lifted', payload);
             }
-            console.log('✅ [SOCKET] Event emitted successfully\n');
+            console.log('✅ [SOCKET] Lift event emitted successfully\n');
         } else {
             console.log('⚠️ [SOCKET] IO not available, cannot emit event\n');
         }
+
 
         res.json({ message: 'Restriction removed' });
     } catch (error) {
