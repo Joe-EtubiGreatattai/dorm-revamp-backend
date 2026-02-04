@@ -29,6 +29,13 @@ const setupSocket = (io) => {
         // Join user's personal room
         socket.join(userId);
 
+        // Join user's school room
+        if (socket.user.university) {
+            const schoolRoom = `school_${socket.user.university}`;
+            socket.join(schoolRoom);
+            console.log(`User ${userId} joined school room: ${schoolRoom}`);
+        }
+
         // ============ MESSAGING EVENTS ============
 
         // Join conversation room
