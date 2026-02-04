@@ -6,7 +6,7 @@ const User = require('../models/User');
 // @access  Admin
 const createRestriction = async (req, res) => {
     try {
-        const { tab, scope, targetId, reason } = req.body;
+        const { tab, scope, targetId, reason, filters } = req.body;
 
         // Check for existing active restriction
         const existing = await Restriction.findOne({
@@ -25,6 +25,7 @@ const createRestriction = async (req, res) => {
             scope,
             targetId: targetId || null,
             reason,
+            filters: filters || {},
             createdBy: req.user._id
         });
 
@@ -36,25 +37,24 @@ const createRestriction = async (req, res) => {
                 scope,
                 targetId,
                 reason,
+                filters: filters || {},
                 isActive: true
             };
 
             if (scope === 'global') {
                 io.emit('restriction:active', payload);
             } else if (scope === 'school') {
-                // Emit to users in this school (requires school rooms or filtering on client)
-                // For simplicity, we emit globally and let client filter, OR use room if available.
-                // Assuming clients join room `school_${schoolId}`
                 io.to(`school_${targetId}`).emit('restriction:active', payload);
             } else if (scope === 'user') {
                 io.to(targetId).emit('restriction:active', payload);
             }
         }
+    }
 
         res.status(201).json(restriction);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
+} catch (error) {
+    res.status(500).json({ message: error.message });
+}
 };
 
 // @desc    Get active restrictions for current user

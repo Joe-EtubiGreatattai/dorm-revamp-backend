@@ -17,6 +17,10 @@ const restrictionSchema = new mongoose.Schema({
         // Ref can be dynamic based on scope, but usually we just query by ID
         default: null
     },
+    filters: {
+        type: Object,
+        default: {}
+    },
     reason: {
         type: String,
         default: 'This feature is currently under maintenance.'
