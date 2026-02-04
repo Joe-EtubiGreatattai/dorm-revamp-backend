@@ -579,8 +579,7 @@ const resendVerificationCode = async (req, res) => {
 const getUniversities = async (req, res) => {
     try {
         const schools = await School.find({}).sort({ name: 1 });
-        // Return objects with both id and name for proper restriction targeting
-        const universities = schools.map(s => ({ id: s._id, name: s.name }));
+        const universities = schools.map(s => s.name);
         res.json(universities);
     } catch (error) {
         res.status(500).json({ message: error.message });
