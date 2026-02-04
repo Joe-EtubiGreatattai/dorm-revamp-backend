@@ -164,6 +164,16 @@ const banUser = async (req, res) => {
                 await sendPushNotification(user.pushTokens, title, body);
             }
 
+            // Emit real-time ban event
+            const io = req.app.get('io');
+            if (io && user.isBanned) {
+                console.log(`Backend: Emitting user:banned to room ${user._id.toString()}`);
+                io.to(user._id.toString()).emit('user:banned', {
+                    reason: user.banReason,
+                    expiresAt: user.banExpires
+                });
+            }
+
             res.json({ message: `User ${user.isBanned ? 'banned' : 'unbanned'}`, isBanned: user.isBanned });
         } else {
             res.status(404).json({ message: 'User not found' });
