@@ -68,7 +68,7 @@ const getMyRestrictions = async (req, res) => {
             isActive: true,
             $or: [
                 { scope: 'global' },
-                { scope: 'school', targetId: user.schoolId }, // Assuming user has schoolId
+                { scope: 'school', targetId: user.university },
                 { scope: 'user', targetId: user._id }
             ]
         });
