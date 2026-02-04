@@ -13,8 +13,7 @@ const restrictionSchema = new mongoose.Schema({
         default: 'global'
     },
     targetId: {
-        type: mongoose.Schema.Types.ObjectId,
-        // Ref can be dynamic based on scope, but usually we just query by ID
+        type: mongoose.Schema.Types.Mixed, // Can be ObjectId for users or String for schools
         default: null
     },
     filters: {
