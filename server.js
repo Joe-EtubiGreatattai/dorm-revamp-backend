@@ -89,6 +89,7 @@ app.use('/api/bugs', require('./routes/bugReportRoutes'));
 app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/reviews', require('./routes/reviewRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
+app.use('/api/restrictions', require('./routes/restrictionRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
