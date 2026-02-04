@@ -75,6 +75,14 @@ const messageSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isAIReply: {
+        type: Boolean,
+        default: false
+    },
+    aiName: {
+        type: String,
+        default: null
+    },
 }, { timestamps: true });
 
 // Encryption Hook

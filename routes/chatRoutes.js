@@ -17,6 +17,7 @@ router.put('/messages/:messageId', chatController.editMessage);
 router.delete('/messages/:messageId', chatController.deleteMessage);
 router.post('/messages/:messageId/react', chatController.reactToMessage);
 router.post('/messages/mark-read', chatController.markMessagesAsRead);
+router.post('/conversations/:id/toggle-ai', chatController.toggleAIChat);
 
 // Group routes
 router.post('/groups', groupController.createGroup);

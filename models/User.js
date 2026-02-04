@@ -147,6 +147,12 @@ const userSchema = new mongoose.Schema({
     hasClaimedFreeMerch: {
         type: Boolean,
         default: false
+    },
+    // AI Auto-responder Settings
+    aiSettings: {
+        enabled: { type: Boolean, default: false },
+        aiName: { type: String, default: 'AI Assistant' },
+        customContext: { type: String, default: '' }
     }
 }, { timestamps: true });
 

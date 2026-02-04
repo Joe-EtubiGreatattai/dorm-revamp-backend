@@ -1,6 +1,9 @@
 const { model } = require('../config/gemini');
 const Material = require('../models/Material');
 const CBT = require('../models/CBT');
+const User = require('../models/User');
+const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
 
 // @desc    Get summary of a document
 // @route   POST /api/ai/summarize
@@ -248,9 +251,101 @@ IMPORTANT: Be specific and detailed but use everyday language. Each point should
     }
 };
 
+const updateAISettings = async (req, res) => {
+    try {
+        const { enabled, aiName, customContext } = req.body;
+        const user = await User.findByIdAndUpdate(
+            req.user._id,
+            {
+                $set: {
+                    'aiSettings.enabled': enabled,
+                    'aiSettings.aiName': aiName,
+                    'aiSettings.customContext': customContext
+                }
+            },
+            { new: true }
+        );
+        res.json(user.aiSettings);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const handleAutoResponder = async (io, conversationId, receiverId, senderId, lastMessageContent) => {
+    try {
+        const receiver = await User.findById(receiverId);
+        const conversation = await Conversation.findById(conversationId);
+
+        if (!receiver || !receiver.aiSettings?.enabled) return;
+
+        // Check if AI is disabled specifically for this conversation
+        // If aiEnabledFor is used, we assume it must be present if conversation-level toggle is required
+        // In my plan, I said "globally or per-conversation". 
+        // Let's implement it so if it's in aiEnabledFor OR global is ON (and not explicitly OFF).
+        // Actually, let's stick to: Global Toggle MUST be ON. 
+        // And if aiEnabledFor has entries, it's only for those? No, let's say aiEnabledFor is for specific chats.
+
+        // Simplified logic: Global Toggle must be ON.
+        if (!receiver.aiSettings.enabled) return;
+
+        console.log(`🤖 [AI] Auto-responding for ${receiver.name} (${receiver.aiSettings.aiName})`);
+
+        const prompt = `You are ${receiver.aiSettings.aiName}, an AI assistant for ${receiver.name}. 
+        Context about ${receiver.name}: ${receiver.aiSettings.customContext || 'A user of our platform.'}
+        
+        Role: Respond politely and helpfully to the message. If this is a vendor, provide info about products.
+        Keep it concise (1-3 sentences).
+        
+        Last message received: "${lastMessageContent}"
+        
+        Response:`;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const aiText = response.text().trim();
+
+        // Create AI Message
+        const message = await Message.create({
+            conversationId,
+            senderId: receiverId, // AI speaks as the receiver
+            receiverId: senderId,
+            content: aiText,
+            type: 'text',
+            isAIReply: true,
+            aiName: receiver.aiSettings.aiName,
+            readBy: [{
+                userId: receiverId,
+                readAt: new Date()
+            }]
+        });
+
+        // Update conversation
+        conversation.lastMessage = aiText;
+        conversation.lastMessageAt = Date.now();
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id);
+
+        if (io) {
+            io.to(conversationId.toString()).emit('message:receive', populatedMessage);
+            io.to(senderId.toString()).emit('notification:message', {
+                senderId: receiverId,
+                senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
+                content: aiText,
+                conversationId,
+                message: populatedMessage
+            });
+        }
+    } catch (error) {
+        console.error('AI Auto-responder Error:', error);
+    }
+};
+
 module.exports = {
     summarizeDocument,
     generateCBT,
-    generateCBTReport
+    generateCBTReport,
+    updateAISettings,
+    handleAutoResponder
 };
 

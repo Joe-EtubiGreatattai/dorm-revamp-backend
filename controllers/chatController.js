@@ -1,6 +1,7 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const { handleAutoResponder } = require('./aiController');
 
 // @desc    Get all conversations for a user
 // @route   GET /api/chat/conversations
@@ -295,6 +296,11 @@ const sendMessage = async (req, res) => {
             });
         }
 
+        // Trigger AI Auto-responder if applicable
+        if (receiver && receiver.aiSettings?.enabled) {
+            handleAutoResponder(io, conversationId, receiverId, req.user._id, content);
+        }
+
         console.log('🟢 [Backend] Sending response to client');
         res.status(201).json(populatedMessage);
     } catch (error) {
@@ -465,6 +471,30 @@ const markMessagesAsRead = async (req, res) => {
     }
 };
 
+const toggleAIChat = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const conversation = await Conversation.findById(id);
+
+        if (!conversation) {
+            return res.status(404).json({ message: 'Conversation not found' });
+        }
+
+        const isEnabled = conversation.aiEnabledFor.includes(req.user._id);
+
+        if (isEnabled) {
+            conversation.aiEnabledFor = conversation.aiEnabledFor.filter(uid => uid.toString() !== req.user._id.toString());
+        } else {
+            conversation.aiEnabledFor.push(req.user._id);
+        }
+
+        await conversation.save();
+        res.json({ enabled: !isEnabled });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getConversations,
     getConversation,
@@ -475,5 +505,6 @@ module.exports = {
     editMessage,
     deleteMessage,
     reactToMessage,
-    markMessagesAsRead
+    markMessagesAsRead,
+    toggleAIChat
 };

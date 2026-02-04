@@ -31,7 +31,11 @@ const conversationSchema = new mongoose.Schema({
     lastMessageAt: {
         type: Date,
         default: Date.now
-    }
+    },
+    aiEnabledFor: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }]
 }, { timestamps: true });
 
 // Encryption Hook
