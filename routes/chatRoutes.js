@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const chatController = require('../controllers/chatController');
+const groupController = require('../controllers/groupController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect); // All chat routes are private
@@ -15,5 +16,12 @@ router.post('/conversations/:id/messages', chatController.sendMessage);
 router.put('/messages/:messageId', chatController.editMessage);
 router.delete('/messages/:messageId', chatController.deleteMessage);
 router.post('/messages/:messageId/react', chatController.reactToMessage);
+
+// Group routes
+router.post('/groups', groupController.createGroup);
+router.post('/groups/:id/invite', groupController.inviteToGroup);
+router.post('/groups/:id/leave', groupController.leaveGroup);
+router.get('/invitations', groupController.getInvitations);
+router.post('/invitations/:id/:action', groupController.handleInvitation);
 
 module.exports = router;

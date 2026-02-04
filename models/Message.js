@@ -14,13 +14,13 @@ const messageSchema = new mongoose.Schema({
     receiverId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false // Optional for group messages
     },
 
     content: String,
     type: {
         type: String,
-        enum: ['text', 'image', 'voice', 'file', 'market_item', 'transfer'],
+        enum: ['text', 'image', 'voice', 'file', 'market_item', 'transfer', 'system'],
         default: 'text'
     },
     transactionId: {

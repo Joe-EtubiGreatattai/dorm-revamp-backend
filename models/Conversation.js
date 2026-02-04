@@ -6,6 +6,24 @@ const conversationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }],
+    type: {
+        type: String,
+        enum: ['individual', 'group'],
+        default: 'individual'
+    },
+    groupMetadata: {
+        name: String,
+        avatar: String,
+        description: String
+    },
+    creatorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    admins: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     lastMessage: {
         type: String,
         default: ''
