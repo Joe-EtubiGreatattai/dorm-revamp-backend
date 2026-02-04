@@ -306,6 +306,9 @@ const updateGroup = async (req, res) => {
             // Emit system message
             io.to(group._id.toString()).emit('message:new', systemMsg);
 
+            // Populate participants to ensure UI has full user data
+            await group.populate('participants', 'name avatar university');
+
             // Emit group update to all participants
             const updatePayload = {
                 id: group._id,
@@ -316,7 +319,7 @@ const updateGroup = async (req, res) => {
             };
 
             group.participants.forEach(p => {
-                io.to(p.toString()).emit('conversation:updated', updatePayload);
+                io.to(p._id.toString()).emit('conversation:updated', updatePayload);
             });
         }
 
