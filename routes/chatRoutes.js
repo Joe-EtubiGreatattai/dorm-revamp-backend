@@ -19,8 +19,11 @@ router.post('/messages/:messageId/react', chatController.reactToMessage);
 
 // Group routes
 router.post('/groups', groupController.createGroup);
+router.put('/groups/:id', groupController.updateGroup);
+router.delete('/groups/:id', groupController.deleteGroup);
 router.post('/groups/:id/invite', groupController.inviteToGroup);
 router.post('/groups/:id/leave', groupController.leaveGroup);
+router.post('/groups/:id/manage-member', groupController.manageMember);
 router.get('/invitations', groupController.getInvitations);
 router.post('/invitations/:id/:action', groupController.handleInvitation);
 
