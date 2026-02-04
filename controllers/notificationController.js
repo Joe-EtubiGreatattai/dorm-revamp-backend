@@ -161,7 +161,10 @@ const createNotification = async (data) => {
             'candidate_application': 'electionReminders',
             'application_approved': 'electionReminders',
             'application_rejected': 'electionReminders',
-            'share': 'shares'
+            'share': 'shares',
+            'group_invite': 'groups',
+            'group_accept': 'groups',
+            'group_joined': 'groups'
             // Default to always true for system or unmapped types if not specified
         };
 

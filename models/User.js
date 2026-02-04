@@ -70,7 +70,8 @@ const userSchema = new mongoose.Schema({
         priceAlerts: { type: Boolean, default: true },
         orderUpdates: { type: Boolean, default: true },
         electionReminders: { type: Boolean, default: true },
-        shares: { type: Boolean, default: true }
+        shares: { type: Boolean, default: true },
+        groups: { type: Boolean, default: true }
     },
 
     // Banking
