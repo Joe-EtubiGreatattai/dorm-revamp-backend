@@ -3,7 +3,7 @@ const Message = require('../models/Message');
 const User = require('../models/User'); // Import User model
 const { sendPushNotification } = require('../utils/pushService'); // Import push service
 
-const connectedUsers = new Map(); // userId -> socketId
+const connectedUsers = new Map(); // userId -> Set of socketIds
 
 const setupSocket = (io) => {
     // Authentication middleware
@@ -14,13 +14,20 @@ const setupSocket = (io) => {
         console.log(`User connected: ${socket.user.name} (${userId})`);
 
         // Store user's socket connection
-        connectedUsers.set(userId, socket.id);
+        if (!connectedUsers.has(userId)) {
+            connectedUsers.set(userId, new Set());
+            // Only broadcast online status on the FIRST connection
+            socket.broadcast.emit('user:online', { userId });
+
+            // Sync with DB
+            const User = require('../models/User');
+            User.findByIdAndUpdate(userId, { isOnline: true }).catch(err => console.error('Error updating online status:', err));
+        }
+
+        connectedUsers.get(userId).add(socket.id);
 
         // Join user's personal room
         socket.join(userId);
-
-        // Emit online status
-        socket.broadcast.emit('user:online', { userId });
 
         // ============ MESSAGING EVENTS ============
 
@@ -275,22 +282,30 @@ const setupSocket = (io) => {
         });
 
         // ============ DISCONNECT ============
-
-        // Update Online Status
-        const User = require('../models/User');
-        User.findByIdAndUpdate(userId, { isOnline: true }).catch(err => console.error('Error updating online status:', err));
-
         socket.on('disconnect', () => {
             console.log(`User disconnected: ${socket.user.name}`);
-            connectedUsers.delete(userId);
 
-            // Update offline status
-            User.findByIdAndUpdate(userId, {
-                isOnline: false,
-                lastSeen: new Date()
-            }).catch(err => console.error('Error updating offline status:', err));
+            const userSockets = connectedUsers.get(userId);
+            if (userSockets) {
+                userSockets.delete(socket.id);
 
-            socket.broadcast.emit('user:offline', { userId });
+                // Only broadcast offline if NO sockets remain
+                if (userSockets.size === 0) {
+                    connectedUsers.delete(userId);
+
+                    // Update offline status in DB
+                    const User = require('../models/User');
+                    User.findByIdAndUpdate(userId, {
+                        isOnline: false,
+                        lastSeen: new Date()
+                    }).catch(err => console.error('Error updating offline status:', err));
+
+                    socket.broadcast.emit('user:offline', { userId });
+                    console.log(`🔴 [Socket] User ${socket.user.name} is now fully offline`);
+                } else {
+                    console.log(`ℹ️ [Socket] User ${socket.user.name} disconnected one session, but ${userSockets.size} still active`);
+                }
+            }
         });
     });
 
