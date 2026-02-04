@@ -162,6 +162,24 @@ const handleInvitation = async (req, res) => {
                 fromUserId: req.user._id
             });
 
+            // Emit socket events
+            const io = global.io;
+            if (io) {
+                // Populate participants to ensure UI has full user data
+                await group.populate('participants', 'name avatar university');
+
+                const updatePayload = {
+                    id: group._id,
+                    type: 'group',
+                    groupMetadata: group.groupMetadata,
+                    participants: group.participants,
+                    admins: group.admins
+                };
+                group.participants.forEach(p => {
+                    io.to(p._id.toString()).emit('conversation:updated', updatePayload);
+                });
+            }
+
             return res.json({ message: 'Invitation accepted', group });
         } else {
             invitation.status = 'declined';
@@ -214,12 +232,37 @@ const leaveGroup = async (req, res) => {
         await group.save();
 
         // System message
-        await Message.create({
+        const systemMsg = await Message.create({
             conversationId: groupId,
             senderId: req.user._id,
             content: 'left the group',
             type: 'system'
         });
+
+        // Emit socket events
+        const io = global.io;
+        if (io) {
+            io.to(groupId.toString()).emit('message:new', systemMsg);
+
+            // Populate participants
+            await group.populate('participants', 'name avatar university');
+
+            const updatePayload = {
+                id: group._id,
+                type: 'group',
+                groupMetadata: group.groupMetadata,
+                participants: group.participants,
+                admins: group.admins
+            };
+
+            // Notify current participants of the departure
+            group.participants.forEach(p => {
+                io.to(p._id.toString()).emit('conversation:updated', updatePayload);
+            });
+
+            // Also notify the person who left (if they still have the app open)
+            io.to(req.user._id.toString()).emit('conversation:updated', updatePayload);
+        }
 
         res.json({ message: 'Left group successfully' });
     } catch (error) {
@@ -250,12 +293,32 @@ const updateGroup = async (req, res) => {
         await group.save();
 
         // System message
-        await Message.create({
+        const systemMsg = await Message.create({
             conversationId: group._id,
             senderId: req.user._id,
             content: 'updated group details',
             type: 'system'
         });
+
+        // Emit socket events
+        const io = global.io;
+        if (io) {
+            // Emit system message
+            io.to(group._id.toString()).emit('message:new', systemMsg);
+
+            // Emit group update to all participants
+            const updatePayload = {
+                id: group._id,
+                type: 'group',
+                groupMetadata: group.groupMetadata,
+                participants: group.participants,
+                admins: group.admins
+            };
+
+            group.participants.forEach(p => {
+                io.to(p.toString()).emit('conversation:updated', updatePayload);
+            });
+        }
 
         res.json(group);
     } catch (error) {
@@ -336,12 +399,38 @@ const manageMember = async (req, res) => {
         await group.save();
 
         if (systemContent) {
-            await Message.create({
+            const systemMsg = await Message.create({
                 conversationId: group._id,
                 senderId: req.user._id,
                 content: systemContent,
                 type: 'system'
             });
+
+            // Emit socket events
+            const io = global.io;
+            if (io) {
+                io.to(group._id.toString()).emit('message:new', systemMsg);
+
+                // Populate participants
+                await group.populate('participants', 'name avatar university');
+
+                const updatePayload = {
+                    id: group._id,
+                    type: 'group',
+                    groupMetadata: group.groupMetadata,
+                    participants: group.participants,
+                    admins: group.admins
+                };
+
+                group.participants.forEach(p => {
+                    io.to(p._id.toString()).emit('conversation:updated', updatePayload);
+                });
+
+                // If kicked, notify the target user as well
+                if (action === 'kick') {
+                    io.to(userId.toString()).emit('conversation:updated', updatePayload);
+                }
+            }
         }
 
         res.json({ message: 'Member managed successfully', group });
