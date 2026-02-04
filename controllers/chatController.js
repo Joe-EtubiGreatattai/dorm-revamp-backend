@@ -251,9 +251,9 @@ const sendMessage = async (req, res) => {
             const roomId = conversationId.toString();
             console.log('🟢 [Backend] Room ID (converted to string):', roomId);
 
-            console.log('📡 [Backend] Emitting message:new to room:', roomId);
-            io.to(roomId).emit('message:new', populatedMessage);
-            console.log('✅ [Backend] message:new emitted successfully');
+            console.log('📡 [Backend] Emitting message:receive to room:', roomId);
+            io.to(roomId).emit('message:receive', populatedMessage);
+            console.log('✅ [Backend] message:receive emitted successfully');
             // Also notify receiver if they are not in the room
             console.log('📡 [Backend] Emitting notification:message to user:', receiverId.toString());
             io.to(receiverId.toString()).emit('notification:message', {
