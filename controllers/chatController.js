@@ -27,6 +27,9 @@ const getConversations = async (req, res) => {
             return {
                 id: conv._id,
                 user: otherParticipant,
+                type: conv.type || 'individual',
+                groupMetadata: conv.groupMetadata,
+                participants: conv.participants,
                 lastMessage: conv.lastMessage,
                 timestamp: conv.lastMessageAt || conv.updatedAt,
                 unread: unreadCount > 0,
@@ -56,7 +59,12 @@ const getConversation = async (req, res) => {
 
         res.json({
             id: conversation._id,
-            user: otherParticipant
+            user: otherParticipant,
+            type: conversation.type || 'individual',
+            groupMetadata: conversation.groupMetadata,
+            participants: conversation.participants,
+            creatorId: conversation.creatorId,
+            admins: conversation.admins
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
