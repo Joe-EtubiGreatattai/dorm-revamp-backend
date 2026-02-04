@@ -227,7 +227,7 @@ const transfer = async (req, res) => {
 
             const io = req.app.get('io');
             if (io) {
-                io.to(conv._id.toString()).emit('message:new', populatedChatMsg);
+                io.to(conv._id.toString()).emit('message:receive', populatedChatMsg);
                 io.to(recipientId.toString()).emit('notification:message', {
                     senderId: senderId,
                     senderName: sender.name,
@@ -342,7 +342,7 @@ const acceptTransfer = async (req, res) => {
                 const chatMsg = await Message.findOne({ transactionId: senderTx._id }).populate('transactionId');
                 if (chatMsg) {
                     chatMsg.isRead = true;
-                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg);
+                    io.to(chatMsg.conversationId.toString()).emit('message:receive', chatMsg);
                 }
             }
         } catch (err) {
@@ -440,7 +440,7 @@ const rejectTransfer = async (req, res) => {
                 // Update chat message
                 const chatMsg = await Message.findOne({ transactionId: senderTx._id }).populate('transactionId');
                 if (chatMsg) {
-                    io.to(chatMsg.conversationId.toString()).emit('message:new', chatMsg);
+                    io.to(chatMsg.conversationId.toString()).emit('message:receive', chatMsg);
                 }
             }
         } catch (err) {
