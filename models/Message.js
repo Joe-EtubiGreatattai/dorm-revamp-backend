@@ -61,6 +61,16 @@ const messageSchema = new mongoose.Schema({
         emoji: String
     }],
 
+    readBy: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        readAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
     isRead: {
         type: Boolean,
         default: false

@@ -16,6 +16,7 @@ router.post('/conversations/:id/messages', chatController.sendMessage);
 router.put('/messages/:messageId', chatController.editMessage);
 router.delete('/messages/:messageId', chatController.deleteMessage);
 router.post('/messages/:messageId/react', chatController.reactToMessage);
+router.post('/messages/mark-read', chatController.markMessagesAsRead);
 
 // Group routes
 router.post('/groups', groupController.createGroup);

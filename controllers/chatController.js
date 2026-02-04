@@ -83,7 +83,25 @@ const getMessages = async (req, res) => {
             .sort({ createdAt: 1 });
 
         // Mark messages as read when fetching
-        const result = await Message.updateMany(
+        await Message.updateMany(
+            {
+                conversationId: req.params.id,
+                'readBy.userId': { $ne: req.user._id }
+            },
+            {
+                $addToSet: {
+                    readBy: {
+                        userId: req.user._id,
+                        readAt: new Date()
+                    }
+                }
+            }
+        );
+
+        // Also update legacy isRead for backward compatibility if needed, 
+        // though we should rely on readBy.
+        // For 1-on-1, if receiver reads it, isRead = true.
+        await Message.updateMany(
             {
                 conversationId: req.params.id,
                 receiverId: req.user._id,
@@ -92,14 +110,13 @@ const getMessages = async (req, res) => {
             { isRead: true }
         );
 
-        if (result.modifiedCount > 0) {
-            const io = req.app.get('io');
-            if (io) {
-                io.to(req.params.id).emit('message:read_all', {
-                    conversationId: req.params.id,
-                    readerId: req.user._id
-                });
-            }
+        const io = req.app.get('io');
+        if (io) {
+            io.to(req.params.id).emit('message:read_all', {
+                conversationId: req.params.id,
+                readerId: req.user._id,
+                readAt: new Date()
+            });
         }
 
         res.json(messages);
@@ -226,7 +243,12 @@ const sendMessage = async (req, res) => {
             replyTo: replyTo || null,
             marketItem: marketItem || null,
             transactionId: transactionId || null,
-            isRead: false // New messages are unread
+            transactionId: transactionId || null,
+            readBy: [{
+                userId: req.user._id,
+                readAt: new Date()
+            }],
+            isRead: false // New messages are unread by others
         });
 
         console.log('🟢 [Backend] Message created:', {
@@ -389,6 +411,60 @@ const reactToMessage = async (req, res) => {
     }
 };
 
+// @desc    Mark specific messages as read
+// @route   POST /api/chat/mark-read
+// @access  Private
+const markMessagesAsRead = async (req, res) => {
+    try {
+        const { conversationId, messageIds } = req.body;
+
+        if (!conversationId) {
+            return res.status(400).json({ message: 'Conversation ID is required' });
+        }
+
+        const query = {
+            conversationId,
+            'readBy.userId': { $ne: req.user._id }
+        };
+
+        // If specific messages provided, limit to those
+        if (messageIds && messageIds.length > 0) {
+            query._id = { $in: messageIds };
+        }
+
+        await Message.updateMany(query, {
+            $addToSet: {
+                readBy: {
+                    userId: req.user._id,
+                    readAt: new Date()
+                }
+            }
+        });
+
+        // Backward compatibility
+        await Message.updateMany(
+            {
+                ...query,
+                receiverId: req.user._id
+            },
+            { isRead: true }
+        );
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(conversationId.toString()).emit('message:read_update', {
+                conversationId,
+                readerId: req.user._id,
+                readAt: new Date()
+            });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getConversations,
     getConversation,
@@ -398,5 +474,6 @@ module.exports = {
     getUnreadCount,
     editMessage,
     deleteMessage,
-    reactToMessage
+    reactToMessage,
+    markMessagesAsRead
 };
