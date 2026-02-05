@@ -65,7 +65,8 @@ const getConversation = async (req, res) => {
             groupMetadata: conversation.groupMetadata,
             participants: conversation.participants,
             creatorId: conversation.creatorId,
-            admins: conversation.admins
+            admins: conversation.admins,
+            aiEnabledFor: conversation.aiEnabledFor
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -480,7 +481,7 @@ const toggleAIChat = async (req, res) => {
             return res.status(404).json({ message: 'Conversation not found' });
         }
 
-        const isEnabled = conversation.aiEnabledFor.includes(req.user._id);
+        const isEnabled = conversation.aiEnabledFor?.some(id => id.toString() === req.user._id.toString());
 
         if (isEnabled) {
             conversation.aiEnabledFor = conversation.aiEnabledFor.filter(uid => uid.toString() !== req.user._id.toString());

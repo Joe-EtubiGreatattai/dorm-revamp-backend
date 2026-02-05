@@ -273,22 +273,29 @@ const updateAISettings = async (req, res) => {
 
 const handleAutoResponder = async (io, conversationId, receiverId, senderId, lastMessageContent) => {
     try {
+        console.log(`🤖 [AI] handleAutoResponder triggered for conversation: ${conversationId}`);
         const receiver = await User.findById(receiverId);
         const conversation = await Conversation.findById(conversationId);
 
-        if (!receiver || !receiver.aiSettings?.enabled) return;
+        if (!receiver) {
+            console.log('🤖 [AI] Receiver not found');
+            return;
+        }
 
-        // Check if AI is disabled specifically for this conversation
-        // If aiEnabledFor is used, we assume it must be present if conversation-level toggle is required
-        // In my plan, I said "globally or per-conversation". 
-        // Let's implement it so if it's in aiEnabledFor OR global is ON (and not explicitly OFF).
-        // Actually, let's stick to: Global Toggle MUST be ON. 
-        // And if aiEnabledFor has entries, it's only for those? No, let's say aiEnabledFor is for specific chats.
+        if (!receiver.aiSettings?.enabled) {
+            console.log(`🤖 [AI] AI globally disabled for ${receiver.name}`);
+            return;
+        }
 
-        // Simplified logic: Global Toggle must be ON.
-        if (!receiver.aiSettings.enabled) return;
+        // Check if AI is enabled for this specific conversation for the receiver
+        const isAIEnabledForChat = conversation.aiEnabledFor?.some(uid => uid.toString() === receiverId.toString());
 
-        console.log(`🤖 [AI] Auto-responding for ${receiver.name} (${receiver.aiSettings.aiName})`);
+        if (!isAIEnabledForChat) {
+            console.log(`🤖 [AI] AI is globally enabled for ${receiver.name} but NOT enabled for this specific chat.`);
+            return;
+        }
+
+        console.log(`🤖 [AI] Auto-responding for ${receiver.name} as "${receiver.aiSettings.aiName}"`);
 
         const prompt = `You are ${receiver.aiSettings.aiName}, an AI assistant for ${receiver.name}. 
         Context about ${receiver.name}: ${receiver.aiSettings.customContext || 'A user of our platform.'}
@@ -296,17 +303,19 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         Role: Respond politely and helpfully to the message. If this is a vendor, provide info about products.
         Keep it concise (1-3 sentences).
         
-        Last message received: "${lastMessageContent}"
+        Last message received from user: "${lastMessageContent}"
         
         Response:`;
 
+        console.log('🤖 [AI] Generating content with Gemini...');
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
+        console.log(`🤖 [AI] Gemini response: "${aiText}"`);
 
         // Create AI Message
         const message = await Message.create({
-            conversationId,
+            conversationId: conversationId.toString(),
             senderId: receiverId, // AI speaks as the receiver
             receiverId: senderId,
             content: aiText,
@@ -327,7 +336,11 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const populatedMessage = await Message.findById(message._id);
 
         if (io) {
-            io.to(conversationId.toString()).emit('message:receive', populatedMessage);
+            const roomId = conversationId.toString();
+            console.log(`🤖 [AI] Emitting to room ${roomId}`);
+            io.to(roomId).emit('message:receive', populatedMessage);
+
+            console.log(`🤖 [AI] Emitting notification to user ${senderId.toString()}`);
             io.to(senderId.toString()).emit('notification:message', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
@@ -336,8 +349,9 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 message: populatedMessage
             });
         }
+        console.log('🤖 [AI] Auto-responder completed successfully');
     } catch (error) {
-        console.error('AI Auto-responder Error:', error);
+        console.error('❌ [AI] Auto-responder Error:', error);
     }
 };
 
