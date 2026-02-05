@@ -172,14 +172,16 @@ const createConversation = async (req, res) => {
             return res.status(400).json({ message: 'You cannot message this user' });
         }
 
-        // Check if conversation already exists between these two
+        // Check if conversation already exists between these two (specifically individual chat)
         let conversation = await Conversation.findOne({
-            participants: { $all: [req.user._id, recipientId] }
+            type: 'individual',
+            participants: { $all: [req.user._id, recipientId], $size: 2 }
         });
 
         if (!conversation) {
             conversation = await Conversation.create({
-                participants: [req.user._id, recipientId]
+                participants: [req.user._id, recipientId],
+                type: 'individual'
             });
         }
 
