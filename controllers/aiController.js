@@ -327,6 +327,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         
         Response:`;
 
+        console.log('🤖 [AI] Sending request to Gemini...');
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
@@ -336,7 +337,8 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         // Create AI Message
-        const message = await Message.create({
+        console.log('🤖 [AI] Creating message in database...');
+        const messageData = {
             conversationId: convIdStr,
             senderId: receiverId, // AI speaks as the receiver
             receiverId: senderId,
@@ -348,15 +350,21 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 userId: receiverId,
                 readAt: new Date()
             }]
-        });
+        };
+
+        const message = await Message.create(messageData);
+        console.log(`🤖 [AI] Message created: ${message._id}`);
 
         // Update conversation
+        console.log('🤖 [AI] Updating conversation lastMessage...');
         conversation.lastMessage = aiText;
         conversation.lastMessageAt = Date.now();
         await conversation.save();
+        console.log('🤖 [AI] Conversation updated');
 
         // Stop typing indicator
         if (io) {
+            console.log('🤖 [AI] Stopping typing indicator');
             io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
@@ -365,20 +373,39 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         }
 
         // Emit message to everyone in the room
-        // REVEAL: Do NOT use lean() here so Mongoose auto-decrypts via the post-init hook!
-        const populatedMessage = await Message.findById(message._id);
+        console.log('🤖 [AI] Fetching populated message for emission...');
+        const populatedMessage = await Message.findById(message._id)
+            .populate('senderId', 'name avatar')
+            .populate('receiverId', 'name avatar');
+
+        if (!populatedMessage) {
+            console.error('🤖 [AI] ERROR: Could not find the message we just created!');
+            throw new Error('Message creation/retrieval failed');
+        }
+
+        // MANUALLY ensure content is decrypted for the socket emission
+        // (Just in case Mongoose hooks don't run as expected for new docs)
+        const { decrypt } = require('../utils/encryption');
+        let plainText = populatedMessage.content;
+        if (plainText && /^[0-9a-fA-F]{32,}$/.test(plainText)) {
+            try { plainText = decrypt(plainText); } catch (e) { }
+        }
+
+        // Use a plain object for emission to avoid Mongoose internal issues
+        const messageToEmit = populatedMessage.toObject();
+        messageToEmit.content = plainText;
 
         if (io) {
             console.log(`🤖 [AI] Emitting AI message to room ${convIdStr}`);
-            io.to(convIdStr).emit('message:receive', populatedMessage);
+            io.to(convIdStr).emit('message:receive', messageToEmit);
 
             console.log(`🤖 [AI] Emitting notification to user ${sendIdStr}`);
             io.to(sendIdStr).emit('notification:message', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
-                content: aiText,
+                content: plainText,
                 conversationId: convIdStr,
-                message: populatedMessage
+                message: messageToEmit
             });
         }
         console.log('🤖 [AI] SUCCESS: Auto-responder cycle completed');
@@ -388,7 +415,12 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const convIdStr = conversationId.toString();
         const recvIdStr = receiverId.toString();
         if (io) {
-            io.to(convIdStr).emit('message:typing', { conversationId: convIdStr, userId: recvIdStr, isTyping: false });
+            console.log('🤖 [AI] Clearing typing indicator after error');
+            io.to(convIdStr).emit('typing:indicator', {
+                conversationId: convIdStr,
+                userId: recvIdStr,
+                isTyping: false
+            });
         }
     }
 };
