@@ -7,6 +7,15 @@ const normalizePost = (post, currentUser) => {
     const p = post.toObject ? post.toObject() : post;
     const isAuthor = currentUser && p.userId?._id?.toString() === currentUser._id.toString();
 
+    // Apply Cloudinary Trimming if metadata exists
+    if (p.video && p.trim && p.video.includes('cloudinary.com')) {
+        const { start, end } = p.trim;
+        // Cloudinary transformation for video trimming: so_X,eo_Y (start offset, end offset)
+        // We insert it after /upload/
+        const trimTransform = `so_${start},eo_${end}`;
+        p.video = p.video.replace('/upload/', `/upload/${trimTransform}/`);
+    }
+
     if (p.isAnonymous && !isAuthor) {
         return {
             ...p,
