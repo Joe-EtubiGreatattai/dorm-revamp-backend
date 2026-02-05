@@ -272,50 +272,56 @@ const updateAISettings = async (req, res) => {
 };
 
 const handleAutoResponder = async (io, conversationId, receiverId, senderId, lastMessageContent) => {
+    const fs = require('fs');
+    const path = require('path');
+    const logFile = path.join(__dirname, '../ai-debug.log');
+
+    const log = (msg) => {
+        const time = new Date().toISOString();
+        const content = `[${time}] ${msg}\n`;
+        fs.appendFileSync(logFile, content);
+        console.log(msg);
+    };
+
     try {
         const convIdStr = conversationId.toString();
         const recvIdStr = receiverId.toString();
         const sendIdStr = senderId.toString();
 
-        console.log(`🤖 [AI] handleAutoResponder triggered | Conv: ${convIdStr} | Owner: ${recvIdStr} | To Human: ${sendIdStr}`);
+        log(`🤖 [AI] START | Conv: ${convIdStr} | AI: ${recvIdStr} | Human: ${sendIdStr}`);
 
         const receiver = await User.findById(receiverId);
         const conversation = await Conversation.findById(conversationId);
 
         if (!receiver) {
-            console.log('🤖 [AI] ERROR: Receiver user not found');
+            log('🤖 [AI] ERROR: Receiver user not found');
             return;
         }
 
         if (!receiver.aiSettings?.enabled) {
-            console.log(`🤖 [AI] SKIPPED: AI globally disabled for ${receiver.name}`);
+            log(`🤖 [AI] SKIPPED: AI globally disabled for ${receiver.name}`);
             return;
         }
 
-        // Check if AI is enabled for this specific conversation for the receiver
-        // We use .some() and .toString() to be safe with ObjectId comparison
         const isAIEnabledForChat = conversation.aiEnabledFor?.some(uid => uid.toString() === recvIdStr);
 
         if (!isAIEnabledForChat) {
-            console.log(`🤖 [AI] SKIPPED: AI is ON in settings for ${receiver.name} but NOT toggled (sparkles) for this chat.`);
-            console.log(`🤖 [AI] Current aiEnabledFor list:`, conversation.aiEnabledFor);
+            log(`🤖 [AI] SKIPPED: AI is ON in settings but NOT toggled (sparkles) for this chat.`);
             return;
         }
 
         // Simulate typing delay
         if (io) {
-            console.log(`🤖 [AI] Sending typing indicator to room ${convIdStr}`);
-            // Use the standard typing:indicator event name
+            log(`🤖 [AI] Sending typing indicator (true)`);
             io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
                 isTyping: true,
-                userName: receiver.aiSettings.aiName // Show AI name in indicator
+                userName: receiver.aiSettings.aiName
             });
         }
 
-        console.log(`🤖 [AI] Generating response for ${receiver.name} as "${receiver.aiSettings.aiName}"...`);
-
+        log(`🤖 [AI] Prompting Gemini for ${receiver.aiSettings.aiName}...`);
         const prompt = `You are ${receiver.aiSettings.aiName}, an AI assistant for ${receiver.name}. 
         Context about ${receiver.name}: ${receiver.aiSettings.customContext || 'A user of our platform.'}
         
@@ -327,21 +333,19 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         
         Response:`;
 
-        console.log('🤖 [AI] Sending request to Gemini...');
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
-        // Gemini success
-        console.log(`🤖 [AI] Gemini success: "${aiText}"`);
+        log(`🤖 [AI] Gemini Success: "${aiText}"`);
 
-        // Wait a small bit more for realism (reduced to 500ms for responsiveness)
+        // Wait a small bit more for realism
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Create AI Message
-        console.log('🤖 [AI] Creating message in database...');
+        log('🤖 [AI] Creating message in DB...');
         const message = await Message.create({
             conversationId: convIdStr,
-            senderId: receiverId, // AI speaks as the receiver
+            senderId: receiverId,
             receiverId: senderId,
             content: aiText,
             type: 'text',
@@ -352,18 +356,18 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 readAt: new Date()
             }]
         });
-        console.log(`🤖 [AI] Message created: ${message._id}`);
+        log(`🤖 [AI] Message Created: ${message._id}`);
 
         // Update conversation
-        console.log('🤖 [AI] Updating conversation lastMessage...');
+        log('🤖 [AI] Updating conversation lastMessage...');
         conversation.lastMessage = aiText;
         conversation.lastMessageAt = Date.now();
         await conversation.save();
-        console.log('🤖 [AI] Conversation updated');
+        log('🤖 [AI] Conversation updated');
 
         // Stop typing indicator
         if (io) {
-            console.log('🤖 [AI] Stopping typing indicator');
+            log('🤖 [AI] Sending typing indicator (false)');
             io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
@@ -372,25 +376,23 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         }
 
         // Emit message to everyone in the room
-        console.log('🤖 [AI] Fetching populated message for emission...');
+        log('🤖 [AI] Emitting message to socket...');
         const populatedMessage = await Message.findById(message._id)
             .populate('senderId', 'name avatar')
             .populate('receiverId', 'name avatar');
 
         if (!populatedMessage) {
-            console.error('🤖 [AI] ERROR: Could not find the message we just created!');
-            throw new Error('Message creation/retrieval failed');
+            log('🤖 [AI] ERROR: Failed to fetch message for emission');
+            return;
         }
 
-        // IMPORTANT: Use toJSON() to trigger the decryption transform and get a plain object
         const messageToEmit = populatedMessage.toJSON();
 
         if (io) {
-            console.log(`🤖 [AI] Emitting AI message to room ${convIdStr}`);
+            log(`🤖 [AI] Emitting message:receive to room ${convIdStr}`);
             io.to(convIdStr).emit('message:receive', messageToEmit);
 
-            console.log(`🤖 [AI] Emitting notification to user ${sendIdStr}`);
-            // FIX: Match the event name used in the main socket config
+            log(`🤖 [AI] Emitting message:notification to user ${sendIdStr}`);
             io.to(sendIdStr).emit('message:notification', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
@@ -399,14 +401,15 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 message: messageToEmit
             });
         }
-        console.log('🤖 [AI] SUCCESS: Auto-responder cycle completed');
+        log('🤖 [AI] FINISHED SUCCESS');
     } catch (error) {
-        console.error('❌ [AI] FATAL ERROR in handleAutoResponder:', error);
+        log(`❌ [AI] FATAL ERROR: ${error.message}`);
+        if (error.stack) log(`Stack: ${error.stack}`);
+
         // Clear typing indicator on error
-        const convIdStr = conversationId.toString();
-        const recvIdStr = receiverId.toString();
-        if (io) {
-            console.log('🤖 [AI] Clearing typing indicator after error');
+        if (io && conversationId && receiverId) {
+            const convIdStr = conversationId.toString();
+            const recvIdStr = receiverId.toString();
             io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
