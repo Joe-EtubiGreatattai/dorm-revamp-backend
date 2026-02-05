@@ -305,10 +305,12 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         // Simulate typing delay
         if (io) {
             console.log(`🤖 [AI] Sending typing indicator to room ${convIdStr}`);
-            io.to(convIdStr).emit('message:typing', {
+            // Use the standard typing:indicator event name
+            io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
-                isTyping: true
+                isTyping: true,
+                userName: receiver.aiSettings.aiName // Show AI name in indicator
             });
         }
 
@@ -331,7 +333,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         console.log(`🤖 [AI] Gemini success: "${aiText}"`);
 
         // Wait a small bit more for realism
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
         // Create AI Message
         const message = await Message.create({
@@ -355,7 +357,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
 
         // Stop typing indicator
         if (io) {
-            io.to(convIdStr).emit('message:typing', {
+            io.to(convIdStr).emit('typing:indicator', {
                 conversationId: convIdStr,
                 userId: recvIdStr,
                 isTyping: false
@@ -363,17 +365,8 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         }
 
         // Emit message to everyone in the room
-        const populatedMessage = await Message.findById(message._id).lean();
-        // Manually ensure decrypted content if lean() is used (encryption hooks might not run on lean results)
-        // But since we just saved it, it might still be in memory. 
-        // We'll rely on the toJSON or manual check if needed.
-        const { decrypt } = require('../utils/encryption');
-        if (populatedMessage.content && populatedMessage.type === 'text') {
-            // If it looks like hex and is 32+ chars, try decrypting
-            if (/^[0-9a-fA-F]{32,}$/.test(populatedMessage.content)) {
-                try { populatedMessage.content = decrypt(populatedMessage.content); } catch (e) { }
-            }
-        }
+        // REVEAL: Do NOT use lean() here so Mongoose auto-decrypts via the post-init hook!
+        const populatedMessage = await Message.findById(message._id);
 
         if (io) {
             console.log(`🤖 [AI] Emitting AI message to room ${convIdStr}`);

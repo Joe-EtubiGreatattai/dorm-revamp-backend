@@ -298,9 +298,24 @@ const sendMessage = async (req, res) => {
             });
         }
 
+        // Initialize aiEnabledFor if missing
+        if (!conversation.aiEnabledFor) {
+            conversation.aiEnabledFor = [];
+        }
+
         // Trigger AI Auto-responder if applicable
-        if (receiver && receiver.aiSettings?.enabled) {
+        const hasAI = receiver && receiver.aiSettings?.enabled;
+        console.log(`🤖 [Backend] AI Trigger Check:`, {
+            receiverId: receiverId?.toString(),
+            hasAISettings: !!receiver?.aiSettings,
+            aiEnabled: receiver?.aiSettings?.enabled
+        });
+
+        if (hasAI) {
+            console.log(`🤖 [Backend] 🚀 Calling handleAutoResponder for ${receiver.name}`);
             handleAutoResponder(io, conversationId, receiverId, req.user._id, content);
+        } else {
+            console.log(`🤖 [Backend] ⏭️ AI NOT enabled for receiver`);
         }
 
         console.log('🟢 [Backend] Sending response to client');
