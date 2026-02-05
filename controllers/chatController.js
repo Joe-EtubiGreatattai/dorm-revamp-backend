@@ -34,7 +34,8 @@ const getConversations = async (req, res) => {
                 lastMessage: conv.lastMessage,
                 timestamp: conv.lastMessageAt || conv.updatedAt,
                 unread: unreadCount > 0,
-                unreadCount: unreadCount
+                unreadCount: unreadCount,
+                aiEnabledFor: conv.aiEnabledFor
             };
         }));
 

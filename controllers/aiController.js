@@ -273,49 +273,69 @@ const updateAISettings = async (req, res) => {
 
 const handleAutoResponder = async (io, conversationId, receiverId, senderId, lastMessageContent) => {
     try {
-        console.log(`🤖 [AI] handleAutoResponder triggered for conversation: ${conversationId}`);
+        const convIdStr = conversationId.toString();
+        const recvIdStr = receiverId.toString();
+        const sendIdStr = senderId.toString();
+
+        console.log(`🤖 [AI] handleAutoResponder triggered | Conv: ${convIdStr} | Owner: ${recvIdStr} | To Human: ${sendIdStr}`);
+
         const receiver = await User.findById(receiverId);
         const conversation = await Conversation.findById(conversationId);
 
         if (!receiver) {
-            console.log('🤖 [AI] Receiver not found');
+            console.log('🤖 [AI] ERROR: Receiver user not found');
             return;
         }
 
         if (!receiver.aiSettings?.enabled) {
-            console.log(`🤖 [AI] AI globally disabled for ${receiver.name}`);
+            console.log(`🤖 [AI] SKIPPED: AI globally disabled for ${receiver.name}`);
             return;
         }
 
         // Check if AI is enabled for this specific conversation for the receiver
-        const isAIEnabledForChat = conversation.aiEnabledFor?.some(uid => uid.toString() === receiverId.toString());
+        // We use .some() and .toString() to be safe with ObjectId comparison
+        const isAIEnabledForChat = conversation.aiEnabledFor?.some(uid => uid.toString() === recvIdStr);
 
         if (!isAIEnabledForChat) {
-            console.log(`🤖 [AI] AI is globally enabled for ${receiver.name} but NOT enabled for this specific chat.`);
+            console.log(`🤖 [AI] SKIPPED: AI is ON in settings for ${receiver.name} but NOT toggled (sparkles) for this chat.`);
+            console.log(`🤖 [AI] Current aiEnabledFor list:`, conversation.aiEnabledFor);
             return;
         }
 
-        console.log(`🤖 [AI] Auto-responding for ${receiver.name} as "${receiver.aiSettings.aiName}"`);
+        // Simulate typing delay
+        if (io) {
+            console.log(`🤖 [AI] Sending typing indicator to room ${convIdStr}`);
+            io.to(convIdStr).emit('message:typing', {
+                conversationId: convIdStr,
+                userId: recvIdStr,
+                isTyping: true
+            });
+        }
+
+        console.log(`🤖 [AI] Generating response for ${receiver.name} as "${receiver.aiSettings.aiName}"...`);
 
         const prompt = `You are ${receiver.aiSettings.aiName}, an AI assistant for ${receiver.name}. 
         Context about ${receiver.name}: ${receiver.aiSettings.customContext || 'A user of our platform.'}
         
-        Role: Respond politely and helpfully to the message. If this is a vendor, provide info about products.
+        Role: Respond politely and helpfully to the message. Be brief and friendly.
+        If the message is not clear, ask for clarification.
         Keep it concise (1-3 sentences).
         
         Last message received from user: "${lastMessageContent}"
         
         Response:`;
 
-        console.log('🤖 [AI] Generating content with Gemini...');
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
-        console.log(`🤖 [AI] Gemini response: "${aiText}"`);
+        console.log(`🤖 [AI] Gemini success: "${aiText}"`);
+
+        // Wait a small bit more for realism
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Create AI Message
         const message = await Message.create({
-            conversationId: conversationId.toString(),
+            conversationId: convIdStr,
             senderId: receiverId, // AI speaks as the receiver
             receiverId: senderId,
             content: aiText,
@@ -333,25 +353,47 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         conversation.lastMessageAt = Date.now();
         await conversation.save();
 
-        const populatedMessage = await Message.findById(message._id);
+        // Stop typing indicator
+        if (io) {
+            io.to(convIdStr).emit('message:typing', {
+                conversationId: convIdStr,
+                userId: recvIdStr,
+                isTyping: false
+            });
+        }
+
+        // Emit message to everyone in the room
+        const populatedMessage = await Message.findById(message._id).lean();
+        // Manually ensure decrypted content if lean() is used (encryption hooks might not run on lean results)
+        // But since we just saved it, it might still be in memory. 
+        // We'll rely on the toJSON or manual check if needed.
+        const { decrypt } = require('../utils/encryption');
+        if (populatedMessage.content && populatedMessage.type === 'text' && populatedMessage.content.includes(':')) {
+            try { populatedMessage.content = decrypt(populatedMessage.content); } catch (e) { }
+        }
 
         if (io) {
-            const roomId = conversationId.toString();
-            console.log(`🤖 [AI] Emitting to room ${roomId}`);
-            io.to(roomId).emit('message:receive', populatedMessage);
+            console.log(`🤖 [AI] Emitting AI message to room ${convIdStr}`);
+            io.to(convIdStr).emit('message:receive', populatedMessage);
 
-            console.log(`🤖 [AI] Emitting notification to user ${senderId.toString()}`);
-            io.to(senderId.toString()).emit('notification:message', {
+            console.log(`🤖 [AI] Emitting notification to user ${sendIdStr}`);
+            io.to(sendIdStr).emit('notification:message', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
                 content: aiText,
-                conversationId,
+                conversationId: convIdStr,
                 message: populatedMessage
             });
         }
-        console.log('🤖 [AI] Auto-responder completed successfully');
+        console.log('🤖 [AI] SUCCESS: Auto-responder cycle completed');
     } catch (error) {
-        console.error('❌ [AI] Auto-responder Error:', error);
+        console.error('❌ [AI] FATAL ERROR in handleAutoResponder:', error);
+        // Clear typing indicator on error
+        const convIdStr = conversationId.toString();
+        const recvIdStr = receiverId.toString();
+        if (io) {
+            io.to(convIdStr).emit('message:typing', { conversationId: convIdStr, userId: recvIdStr, isTyping: false });
+        }
     }
 };
 
