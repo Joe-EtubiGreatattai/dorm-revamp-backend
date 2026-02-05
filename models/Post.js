@@ -53,6 +53,10 @@ const postSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    trim: {
+        start: Number,
+        end: Number
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Post', postSchema);

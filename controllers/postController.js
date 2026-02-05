@@ -160,7 +160,8 @@ const createPost = async (req, res) => {
             locations: req.body.locations,
             school: req.user.university,
             visibility: req.body.visibility || 'public',
-            isAnonymous: req.body.isAnonymous === true
+            isAnonymous: req.body.isAnonymous === true,
+            trim: req.body.trim
         });
 
         console.log('🔍 [Backend] Polulating post data...');
