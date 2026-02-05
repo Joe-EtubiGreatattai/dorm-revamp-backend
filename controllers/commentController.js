@@ -121,7 +121,8 @@ const createComment = async (req, res) => {
                     fromUserId: req.user._id,
                     relatedId: postId,
                     title: 'New Comment',
-                    message: `${req.user.name} commented on your post: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`
+                    message: `${req.user.name} commented on your post: "${content.substring(0, 30)}${content.length > 30 ? '...' : ''}"`,
+                    imageUrl: post.images && post.images.length > 0 ? post.images[0] : null
                 });
             }
 
@@ -136,7 +137,8 @@ const createComment = async (req, res) => {
                         fromUserId: req.user._id,
                         relatedId: postId,
                         title: 'New Reply',
-                        message: `${req.user.name} replied to your comment`
+                        message: `${req.user.name} replied to your comment`,
+                        imageUrl: post.images && post.images.length > 0 ? post.images[0] : null
                     });
                 }
             }

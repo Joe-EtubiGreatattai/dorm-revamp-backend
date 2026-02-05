@@ -3,7 +3,7 @@ const { Expo } = require('expo-server-sdk');
 // Create a new Expo SDK client
 let expo = new Expo();
 
-const sendPushNotification = async (pushTokens, title, body, data = {}) => {
+const sendPushNotification = async (pushTokens, title, body, data = {}, imageUrl = null) => {
     // Filter out invalid tokens
     let messages = [];
     for (let pushToken of pushTokens) {
@@ -17,7 +17,9 @@ const sendPushNotification = async (pushTokens, title, body, data = {}) => {
             sound: 'default',
             title: title || 'Dorm Notification',
             body: body,
-            data: data,
+            data: { ...data, imageUrl },
+            image: imageUrl, // Supported by Android
+            mutableContent: !!imageUrl, // Requirement for iOS image attachments
         });
     }
 

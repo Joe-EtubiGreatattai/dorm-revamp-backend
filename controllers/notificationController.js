@@ -203,7 +203,8 @@ const createNotification = async (data) => {
                 user.pushTokens,
                 data.title || 'New Notification',
                 data.message || 'You have a new notification',
-                { notificationId: notification._id, ...data }
+                { notificationId: notification._id, ...data },
+                data.imageUrl || null
             );
         }
 

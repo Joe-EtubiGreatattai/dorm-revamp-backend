@@ -198,12 +198,16 @@ const createPost = async (req, res) => {
                         // unless we want to be strict. Let's send it.
 
                         if (follower.pushTokens && follower.pushTokens.length > 0) {
+                            // Use first image if available, otherwise null
+                            const postImage = post.images && post.images.length > 0 ? post.images[0] : null;
+
                             pushPromises.push(
                                 sendPushNotification(
                                     follower.pushTokens,
                                     `New post from ${req.user.name}`,
                                     content.length > 50 ? content.substring(0, 50) + '...' : content,
-                                    { type: 'post', postId: post._id, url: `/post/${post._id}` }
+                                    { type: 'post', postId: post._id, url: `/post/${post._id}` },
+                                    postImage
                                 )
                             );
                         }
@@ -356,7 +360,8 @@ const likePost = async (req, res) => {
                     fromUserId: userId,
                     relatedId: post._id,
                     title: 'New Like',
-                    message: `${req.user.name} liked your post`
+                    message: `${req.user.name} liked your post`,
+                    imageUrl: post.images && post.images.length > 0 ? post.images[0] : null
                 });
             }
         }
@@ -394,7 +399,8 @@ const sharePost = async (req, res) => {
                 fromUserId: req.user._id,
                 relatedId: updatedPost._id,
                 title: 'Post Shared',
-                message: `${req.user.name} shared your post`
+                message: `${req.user.name} shared your post`,
+                imageUrl: updatedPost.images && updatedPost.images.length > 0 ? updatedPost.images[0] : null
             });
         }
 
