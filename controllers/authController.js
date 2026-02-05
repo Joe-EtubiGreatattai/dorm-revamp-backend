@@ -157,6 +157,7 @@ const login = async (req, res) => {
         const user = await User.findOne({ email });
 
         if (!user) {
+            console.log(`❌ [Login] User not found: ${email}`);
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -171,6 +172,7 @@ const login = async (req, res) => {
         }
 
         if (await bcrypt.compare(password, user.password)) {
+            console.log(`✅ [Login] Success: ${user.name} (${user._id})`);
             res.json({
                 _id: user._id,
                 name: user.name,
@@ -184,6 +186,7 @@ const login = async (req, res) => {
                 token: generateToken(user._id)
             });
         } else {
+            console.log(`❌ [Login] Invalid password for: ${email}`);
             res.status(401).json({ message: 'Invalid credentials' });
         }
     } catch (error) {
@@ -380,6 +383,7 @@ const changePassword = async (req, res) => {
 // @route   POST /api/auth/forgot-password
 // @access  Public
 const forgotPassword = async (req, res) => {
+    console.log(`🔑 [Auth] Forgot password requested for: ${req.body.email}`);
     try {
         const { email } = sanitize(req.body);
         const user = await User.findOne({ email });

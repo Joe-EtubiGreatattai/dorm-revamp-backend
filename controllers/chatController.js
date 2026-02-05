@@ -194,18 +194,12 @@ const createConversation = async (req, res) => {
 // @access  Private
 const sendMessage = async (req, res) => {
     try {
-        console.log('🟢 [Backend] ========== SEND MESSAGE REQUEST ==========');
-        console.log('🟢 [Backend] Request body:', req.body);
-        console.log('🟢 [Backend] Conversation ID from params:', req.params.id);
-        console.log('🟢 [Backend] User:', { id: req.user._id, name: req.user.name });
-
         const { content, type, mediaUrl, replyTo, marketItem, transactionId } = req.body;
         const conversationId = req.params.id;
+        const userId = req.user._id;
 
-        console.log('🟢 [Backend] Content:', content);
-        console.log('🟢 [Backend] ConversationId type:', typeof conversationId);
+        console.log(`💬 [API Message] From ${req.user.name}: "${content || (mediaUrl ? '[Media]' : '[Attachment]')}"`);
 
-        console.log('🟢 [Backend] Looking up conversation...');
         const conversation = await Conversation.findById(conversationId);
 
         if (!conversation) {

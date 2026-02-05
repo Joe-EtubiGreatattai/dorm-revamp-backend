@@ -143,7 +143,7 @@ const createComment = async (req, res) => {
         }
 
         const duration = Date.now() - startTime;
-        console.log(`✅ [Backend] createComment success in ${duration}ms`);
+        console.log(`💬 [Comment] From ${req.user.name} on post ${postId}: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}" (${duration}ms)`);
         res.status(201).json(normalizedComment);
     } catch (error) {
         console.error('❌ [Backend] createComment error:', error.message);

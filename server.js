@@ -19,7 +19,9 @@ const allowedOrigins = [
     'http://192.168.0.130:8081',
     'http://localhost:8081',
     'http://localhost:8080',
+    'http://192.168.0.127:8081',
     'exp://192.168.0.130:8081',
+    'exp://192.168.0.127:8081',
     'https://dorm-revamp-admin.vercel.app'
 ];
 
@@ -43,7 +45,14 @@ app.set('io', io);
 
 // Global Request Logger for Debugging
 app.use((req, res, next) => {
-    console.log(`🌐 [Backend] ${req.method} ${req.url}`);
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`🌐 [Backend] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+        if (req.method !== 'GET' && req.body && Object.keys(req.body).length > 0) {
+            console.log(`📦 [Body]`, JSON.stringify(req.body, null, 2));
+        }
+    });
     next();
 });
 

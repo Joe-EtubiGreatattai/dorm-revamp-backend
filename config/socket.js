@@ -11,7 +11,7 @@ const setupSocket = (io) => {
 
     io.on('connection', (socket) => {
         const userId = socket.user._id.toString();
-        console.log(`User connected: ${socket.user.name} (${userId})`);
+        console.log(`🔌 [Socket] User connected: ${socket.user.name} (${userId}) | IP: ${socket.handshake.address}`);
 
         // Store user's socket connection
         if (!connectedUsers.has(userId)) {
@@ -75,9 +75,11 @@ const setupSocket = (io) => {
                 }
 
                 // Emit to conversation room (sender and other participants)
+                console.log(`📩 [Socket Message] From ${socket.user.name}: "${content || (mediaUrl ? '[Media]' : '[Attachment]')}"`);
                 io.to(conversationId).emit('message:receive', populatedMessage);
 
                 // Emit to receiver's personal room for notification
+                console.log(`🔔 [Socket] Sending notification to ${receiverId}`);
                 io.to(receiverId.toString()).emit('message:notification', {
                     from: socket.user,
                     message: populatedMessage
@@ -92,6 +94,7 @@ const setupSocket = (io) => {
             try {
                 const message = await Message.findByIdAndUpdate(messageId, { isDelivered: true }, { new: true });
                 if (message) {
+                    console.log(`✅ [Socket] Message ${messageId} marked as delivered`);
                     io.to(conversationId).emit('message:status_update', {
                         messageId: message._id,
                         conversationId,
@@ -123,6 +126,7 @@ const setupSocket = (io) => {
 
         // Typing indicator
         socket.on('typing:start', ({ conversationId, receiverId, status }) => {
+            console.log(`✍️ [Socket] ${socket.user.name} is typing in ${conversationId}...`);
             io.to(receiverId).emit('typing:indicator', {
                 conversationId,
                 userId,
@@ -133,6 +137,7 @@ const setupSocket = (io) => {
         });
 
         socket.on('typing:stop', ({ conversationId, receiverId }) => {
+            console.log(`✍️ [Socket] ${socket.user.name} stopped typing in ${conversationId}`);
             io.to(receiverId).emit('typing:indicator', {
                 conversationId,
                 userId,

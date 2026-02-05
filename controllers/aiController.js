@@ -272,14 +272,7 @@ const updateAISettings = async (req, res) => {
 };
 
 const handleAutoResponder = async (io, conversationId, receiverId, senderId, lastMessageContent) => {
-    const fs = require('fs');
-    const path = require('path');
-    const logFile = path.join(__dirname, '../ai-debug.log');
-
     const log = (msg) => {
-        const time = new Date().toISOString();
-        const content = `[${time}] ${msg}\n`;
-        fs.appendFileSync(logFile, content);
         console.log(msg);
     };
 
@@ -306,7 +299,8 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const isAIEnabledForChat = conversation.aiEnabledFor?.some(uid => uid.toString() === recvIdStr);
 
         if (!isAIEnabledForChat) {
-            log(`🤖 [AI] SKIPPED: AI is ON in settings but NOT toggled (sparkles) for this chat.`);
+            log(`🤖 [AI] SKIPPED: AI is ON in settings for ${receiver.name} but NOT toggled (sparkles) for this chat.`);
+            log(`🤖 [AI] Current enabled list: ${conversation.aiEnabledFor}`);
             return;
         }
 
@@ -336,7 +330,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
-        log(`🤖 [AI] Gemini Success: "${aiText}"`);
+        log(`✨ [AI] Gemini Success! Response: "${aiText}"`);
 
         // Wait a small bit more for realism
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -389,10 +383,10 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const messageToEmit = populatedMessage.toJSON();
 
         if (io) {
-            log(`🤖 [AI] Emitting message:receive to room ${convIdStr}`);
+            log(`📤 [AI] Emitting "message:receive" to room ${convIdStr}`);
             io.to(convIdStr).emit('message:receive', messageToEmit);
 
-            log(`🤖 [AI] Emitting message:notification to user ${sendIdStr}`);
+            log(`🔔 [AI] Sending notification to human ${sendIdStr}`);
             io.to(sendIdStr).emit('message:notification', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
@@ -401,7 +395,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 message: messageToEmit
             });
         }
-        log('🤖 [AI] FINISHED SUCCESS');
+        log('✅ [AI] CYCLE COMPLETED SUCCESSFULLY');
     } catch (error) {
         log(`❌ [AI] FATAL ERROR: ${error.message}`);
         if (error.stack) log(`Stack: ${error.stack}`);
