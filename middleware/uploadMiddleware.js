@@ -40,6 +40,13 @@ const fileFilter = (req, file, cb) => {
         'video/mpeg',
         'video/quicktime',
         'video/x-msvideo',
+        'audio/mpeg',
+        'audio/wav',
+        'audio/m4a',
+        'audio/x-m4a',
+        'audio/mp4',
+        'audio/ogg',
+        'audio/aac',
         'application/pdf',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

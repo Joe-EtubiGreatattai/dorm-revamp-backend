@@ -42,16 +42,18 @@ const getComments = async (req, res) => {
 const createComment = async (req, res) => {
     const startTime = Date.now();
     try {
-        const { postId, content, parentCommentId } = req.body;
+        const { postId, content, parentCommentId, image, audio } = req.body;
 
-        if (!content) {
-            return res.status(400).json({ message: 'Content is required' });
+        if (!content && !image && !audio) {
+            return res.status(400).json({ message: 'Comment content or media is required' });
         }
 
         const comment = await Comment.create({
             postId,
             userId: req.user._id,
-            content,
+            content: content || '',
+            image,
+            audio,
             parentCommentId: parentCommentId || null
         });
 
