@@ -7,10 +7,15 @@ const { sendPushNotification } = require('../utils/pushService');
 // @access  Private
 const getNotifications = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+
         const notifications = await Notification.find({ userId: req.user._id })
             .populate('fromUserId', 'name avatar')
             .sort({ createdAt: -1 })
-            .limit(50);
+            .skip(skip)
+            .limit(limit);
 
         const normalizedNotifications = notifications.map(notif => {
             const n = notif.toObject();
