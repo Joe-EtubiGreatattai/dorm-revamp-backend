@@ -368,8 +368,11 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         // But since we just saved it, it might still be in memory. 
         // We'll rely on the toJSON or manual check if needed.
         const { decrypt } = require('../utils/encryption');
-        if (populatedMessage.content && populatedMessage.type === 'text' && populatedMessage.content.includes(':')) {
-            try { populatedMessage.content = decrypt(populatedMessage.content); } catch (e) { }
+        if (populatedMessage.content && populatedMessage.type === 'text') {
+            // If it looks like hex and is 32+ chars, try decrypting
+            if (/^[0-9a-fA-F]{32,}$/.test(populatedMessage.content)) {
+                try { populatedMessage.content = decrypt(populatedMessage.content); } catch (e) { }
+            }
         }
 
         if (io) {
