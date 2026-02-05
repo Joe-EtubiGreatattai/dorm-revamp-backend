@@ -331,14 +331,15 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const aiText = response.text().trim();
+        // Gemini success
         console.log(`🤖 [AI] Gemini success: "${aiText}"`);
 
-        // Wait a small bit more for realism
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Wait a small bit more for realism (reduced to 500ms for responsiveness)
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Create AI Message
         console.log('🤖 [AI] Creating message in database...');
-        const messageData = {
+        const message = await Message.create({
             conversationId: convIdStr,
             senderId: receiverId, // AI speaks as the receiver
             receiverId: senderId,
@@ -350,9 +351,7 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
                 userId: receiverId,
                 readAt: new Date()
             }]
-        };
-
-        const message = await Message.create(messageData);
+        });
         console.log(`🤖 [AI] Message created: ${message._id}`);
 
         // Update conversation
@@ -383,27 +382,19 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
             throw new Error('Message creation/retrieval failed');
         }
 
-        // MANUALLY ensure content is decrypted for the socket emission
-        // (Just in case Mongoose hooks don't run as expected for new docs)
-        const { decrypt } = require('../utils/encryption');
-        let plainText = populatedMessage.content;
-        if (plainText && /^[0-9a-fA-F]{32,}$/.test(plainText)) {
-            try { plainText = decrypt(plainText); } catch (e) { }
-        }
-
-        // Use a plain object for emission to avoid Mongoose internal issues
-        const messageToEmit = populatedMessage.toObject();
-        messageToEmit.content = plainText;
+        // IMPORTANT: Use toJSON() to trigger the decryption transform and get a plain object
+        const messageToEmit = populatedMessage.toJSON();
 
         if (io) {
             console.log(`🤖 [AI] Emitting AI message to room ${convIdStr}`);
             io.to(convIdStr).emit('message:receive', messageToEmit);
 
             console.log(`🤖 [AI] Emitting notification to user ${sendIdStr}`);
-            io.to(sendIdStr).emit('notification:message', {
+            // FIX: Match the event name used in the main socket config
+            io.to(sendIdStr).emit('message:notification', {
                 senderId: receiverId,
                 senderName: `${receiver.aiSettings.aiName} (${receiver.name})`,
-                content: plainText,
+                content: messageToEmit.content,
                 conversationId: convIdStr,
                 message: messageToEmit
             });
