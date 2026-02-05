@@ -152,6 +152,11 @@ const userSchema = new mongoose.Schema({
     aiSettings: {
         enabled: { type: Boolean, default: false },
         aiName: { type: String, default: 'AI Assistant' },
+        personality: {
+            type: String,
+            enum: ['Friendly', 'Gen-Z', 'Sassy', 'Academic', 'Supportive'],
+            default: 'Friendly'
+        },
         customContext: { type: String, default: '' }
     }
 }, { timestamps: true });

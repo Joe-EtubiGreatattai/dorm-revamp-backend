@@ -253,13 +253,14 @@ IMPORTANT: Be specific and detailed but use everyday language. Each point should
 
 const updateAISettings = async (req, res) => {
     try {
-        const { enabled, aiName, customContext } = req.body;
+        const { enabled, aiName, customContext, personality } = req.body;
         const user = await User.findByIdAndUpdate(
             req.user._id,
             {
                 $set: {
                     'aiSettings.enabled': enabled,
                     'aiSettings.aiName': aiName,
+                    'aiSettings.personality': personality,
                     'aiSettings.customContext': customContext
                 }
             },
@@ -315,17 +316,41 @@ const handleAutoResponder = async (io, conversationId, receiverId, senderId, las
             });
         }
 
-        log(`🤖 [AI] Prompting Gemini for ${receiver.aiSettings.aiName}...`);
-        const prompt = `You are ${receiver.aiSettings.aiName}, an AI assistant for ${receiver.name}. 
+        // Fetch last 5 messages for context
+        const recentMessages = await Message.find({ conversationId })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean();
+
+        const history = recentMessages.reverse().map(m =>
+            `${m.senderId.toString() === recvIdStr ? receiver.aiSettings.aiName : 'User'}: ${m.content}`
+        ).join('\n');
+
+        const personalities = {
+            'Gen-Z': 'Use lots of Gen-Z slang (no cap, bet, vibes, lowkey, frfr, slay). Use many emojis. Be high-energy and very informal. Act like a cool student.',
+            'Sassy': 'Be witty, sarcastic, and have a bit of attitude. Use playful eye-rolls (expressively) and confident tone. Don\'t be mean, just sharp and fun.',
+            'Academic': 'Be very formal, intelligent, and precise. Use sophisticated vocabulary. Focus on being educational and professional.',
+            'Supportive': 'Be extremely kind, empathetic, and encouraging. Use heart emojis and sweet language. Make the user feel heard and cared for.',
+            'Friendly': 'Be helpful, polite, and warmly casual. The standard balanced personality.'
+        };
+
+        const chosenPersonality = personalities[receiver.aiSettings?.personality] || personalities['Friendly'];
+
+        log(`🤖 [AI] Prompting Gemini for ${receiver.aiSettings.aiName} (${receiver.aiSettings?.personality || 'Friendly'})...`);
+        const prompt = `You are ${receiver.aiSettings.aiName}, a highly interactive AI assistant for ${receiver.name}. 
         Context about ${receiver.name}: ${receiver.aiSettings.customContext || 'A user of our platform.'}
         
-        Role: Respond politely and helpfully to the message. Be brief and friendly.
-        If the message is not clear, ask for clarification.
-        Keep it concise (1-3 sentences).
+        Personality: ${chosenPersonality}
         
-        Last message received from user: "${lastMessageContent}"
+        Recent Conversation History:
+        ${history}
         
-        Response:`;
+        Task: Respond to the last message in a way that matches your personality. 
+        - BE INTERACTIVE: If appropriate, ask a follow-up question to keep the chat going (e.g. "How about you?", "What do you think?").
+        - Be brief (1-3 sentences normally, unless the user asks for more).
+        - Don't repeat yourself.
+        
+        Your Response:`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
