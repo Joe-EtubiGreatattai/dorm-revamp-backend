@@ -42,7 +42,7 @@ const getDashboardStats = async (req, res) => {
 const getAllUsers = async (req, res) => {
     try {
         const { page: pageQuery, keyword: keywordInput, role, status } = sanitize(req.query);
-        const pageSize = 20;
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(pageQuery) || 1;
 
         let query = {};
@@ -71,19 +71,22 @@ const getAllUsers = async (req, res) => {
             .select('-password')
             .sort({ createdAt: -1 });
 
-        res.json({ users, page, pages: Math.ceil(count / pageSize) });
+        res.json({
+            users,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// @desc    Get All Orders with pagination
-// @route   GET /api/admin/orders
-// @access  Private/Admin
 const getAllOrders = async (req, res) => {
     try {
         const { page: pageQuery, status } = sanitize(req.query);
-        const pageSize = 20;
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(pageQuery) || 1;
 
         const filter = {};
@@ -96,14 +99,17 @@ const getAllOrders = async (req, res) => {
             .sort({ createdAt: -1 })
             .limit(pageSize)
             .skip(pageSize * (page - 1))
-            .sort({ createdAt: -1 })
-            .limit(pageSize)
-            .skip(pageSize * (page - 1))
             .populate('buyerId', 'name email')
             .populate('sellerId', 'name')
             .populate('itemId', 'title price images');
 
-        res.json({ orders, page, pages: Math.ceil(count / pageSize), total: count });
+        res.json({
+            orders,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -183,13 +189,10 @@ const banUser = async (req, res) => {
     }
 };
 
-// @desc    Get All Market Items with pagination
-// @route   GET /api/admin/market
-// @access  Private/Admin
 const getAllMarketItems = async (req, res) => {
     try {
         const { page: pageQuery, type, status } = sanitize(req.query);
-        const pageSize = 20;
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(pageQuery) || 1;
 
         const filter = {};
@@ -207,7 +210,13 @@ const getAllMarketItems = async (req, res) => {
             .skip(pageSize * (page - 1))
             .populate('ownerId', 'name email');
 
-        res.json({ marketItems, page, pages: Math.ceil(count / pageSize), total: count });
+        res.json({
+            marketItems,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -253,13 +262,10 @@ const deleteMarketItem = async (req, res) => {
     }
 };
 
-// @desc    Get All Housing Listings with pagination
-// @route   GET /api/admin/housing
-// @access  Private/Admin
 const getAllHousingListings = async (req, res) => {
     try {
         const { page: pageQuery, status } = sanitize(req.query);
-        const pageSize = 20;
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(pageQuery) || 1;
 
         const filter = {};
@@ -274,7 +280,13 @@ const getAllHousingListings = async (req, res) => {
             .skip(pageSize * (page - 1))
             .populate('ownerId', 'name email');
 
-        res.json({ listings, page, pages: Math.ceil(count / pageSize), total: count });
+        res.json({
+            listings,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -446,13 +458,10 @@ const deleteElection = async (req, res) => {
     }
 };
 
-// @desc    Get All Posts with pagination
-// @route   GET /api/admin/posts
-// @access  Private/Admin
 const getAllPosts = async (req, res) => {
     try {
         const { page: pageQuery, reported } = sanitize(req.query);
-        const pageSize = 20;
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(pageQuery) || 1;
 
         const filter = {};
@@ -485,7 +494,13 @@ const getAllPosts = async (req, res) => {
             createdAt: post.createdAt
         }));
 
-        res.json({ posts: transformedPosts, page, pages: Math.ceil(count / pageSize), total: count });
+        res.json({
+            posts: transformedPosts,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -536,21 +551,24 @@ const deletePost = async (req, res) => {
     }
 };
 
-// @desc    Get All Election News
-// @route   GET /api/admin/election-news
-// @access  Private/Admin
 const getAllElectionNews = async (req, res) => {
     try {
-        const pageSize = 20;
+        const count = await ElectionNews.countDocuments();
+        const pageSize = Number(req.query.limit) || 20;
         const page = Number(req.query.page) || 1;
 
-        const count = await ElectionNews.countDocuments();
         const newsItems = await ElectionNews.find()
             .sort({ createdAt: -1 })
             .limit(pageSize)
             .skip(pageSize * (page - 1));
 
-        res.json({ newsItems, page, pages: Math.ceil(count / pageSize), total: count });
+        res.json({
+            newsItems,
+            page,
+            pages: Math.ceil(count / pageSize),
+            totalPages: Math.ceil(count / pageSize),
+            total: count
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

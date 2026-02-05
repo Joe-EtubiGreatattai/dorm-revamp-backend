@@ -46,7 +46,8 @@ exports.getBugReports = async (req, res) => {
             pagination: {
                 total,
                 page: parseInt(page),
-                pages: Math.ceil(total / limit)
+                pages: Math.ceil(total / limit),
+                totalPages: Math.ceil(total / limit)
             }
         });
     } catch (error) {
