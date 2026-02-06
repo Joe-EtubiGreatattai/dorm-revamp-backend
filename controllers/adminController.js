@@ -793,127 +793,139 @@ const updateAppealStatus = async (req, res) => {
                 }
             }
         } else if (status === 'rejected') {
-            const user = await User.findById(appeal.userId);
-            const session = await require('mongoose').startSession();
-            session.startTransaction();
-            try {
-                const { identifier, amount, reason } = req.body; // identifier can be email or matricNo
+            // Optional: Notify user of rejection
+        }
 
-                if (!identifier || !amount || amount <= 0 || !reason) {
-                    await session.abortTransaction();
-                    session.endSession();
-                    return res.status(400).json({ message: 'Please provide user email/matric, valid amount, and reason.' });
-                }
+        res.json({ message: 'Appeal status updated', appeal });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
-                // Find user
-                const user = await User.findOne({
-                    $or: [{ email: identifier.toLowerCase() }, { matricNo: identifier.toUpperCase() }]
-                }).session(session);
+// @desc    Deduct funds from user wallet (Admin)
+// @route   POST /api/admin/deduct-funds
+// @access  Private/Admin
+const deductUserBalance = async (req, res) => {
+    const session = await require('mongoose').startSession();
+    session.startTransaction();
+    try {
+        const { identifier, amount, reason } = req.body; // identifier can be email or matricNo
 
-                if (!user) {
-                    await session.abortTransaction();
-                    session.endSession();
-                    return res.status(404).json({ message: 'User not found' });
-                }
+        if (!identifier || !amount || amount <= 0 || !reason) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: 'Please provide user email/matric, valid amount, and reason.' });
+        }
 
-                if (user.walletBalance < amount) {
-                    await session.abortTransaction();
-                    session.endSession();
-                    return res.status(400).json({
-                        message: `Insufficient balance. User has ₦${user.walletBalance.toLocaleString()}`
-                    });
-                }
+        // Find user
+        const user = await User.findOne({
+            $or: [{ email: identifier.toLowerCase() }, { matricNo: identifier.toUpperCase() }]
+        }).session(session);
 
-                // Deduct balance
-                user.walletBalance -= amount;
-                await user.save({ session });
+        if (!user) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-                // Create transaction record
-                const transaction = await Transaction.create([{
-                    userId: user._id,
-                    type: 'withdrawal', // Using 'withdrawal' or a specific type if enum allows. Let's use 'withdrawal' for now or 'admin_deduction' if schema permits. 
-                    // Checking schema constraints usually 'withdrawal' is safe, or generic 'debit'. 
-                    // Let's assume 'withdrawal' fits "money leaving wallet".
-                    amount: amount,
-                    description: `Admin Deduction: ${reason}`,
-                    status: 'completed',
-                    paymentMethod: 'admin_deduction',
-                    reference: `ADMIN-${Date.now()}`
-                }], { session });
+        if (user.walletBalance < amount) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                message: `Insufficient balance. User has ₦${user.walletBalance.toLocaleString()}`
+            });
+        }
 
-                await session.commitTransaction();
-                session.endSession();
+        // Deduct balance
+        user.walletBalance -= amount;
+        await user.save({ session });
 
-                // Notify User
-                try {
-                    await createNotification({
-                        userId: user._id,
-                        type: 'admin_deduction',
-                        title: 'Funds Deducted ⚠️',
-                        message: `₦${amount.toLocaleString()} has been deducted from your wallet. Reason: ${reason}`,
-                        relatedId: transaction[0]._id
-                    });
+        // Create transaction record
+        const transaction = await Transaction.create([{
+            userId: user._id,
+            type: 'withdrawal', // Using 'withdrawal' or a specific type if enum allows. Let's use 'withdrawal' for now or 'admin_deduction' if schema permits. 
+            // Checking schema constraints usually 'withdrawal' is safe, or generic 'debit'. 
+            // Let's assume 'withdrawal' fits "money leaving wallet".
+            amount: amount,
+            description: `Admin Deduction: ${reason}`,
+            status: 'completed',
+            paymentMethod: 'admin_deduction',
+            reference: `ADMIN-${Date.now()}`
+        }], { session });
 
-                    if (user.pushTokens && user.pushTokens.length > 0) {
-                        await sendPushNotification(
-                            user.pushTokens,
-                            'Wallet Debit Alert',
-                            `₦${amount.toLocaleString()} has been deducted from your wallet by admin. Reason: ${reason}`
-                        );
-                    }
+        await session.commitTransaction();
+        session.endSession();
 
-                    const io = req.app.get('io');
-                    if (io) {
-                        io.emit('wallet:updated', { userId: user._id, balance: user.walletBalance });
-                    }
-                } catch (notifError) {
-                    console.error('Notification error:', notifError);
-                }
+        // Notify User
+        try {
+            await createNotification({
+                userId: user._id,
+                type: 'admin_deduction',
+                title: 'Funds Deducted ⚠️',
+                message: `₦${amount.toLocaleString()} has been deducted from your wallet. Reason: ${reason}`,
+                relatedId: transaction[0]._id
+            });
 
-                res.json({
-                    message: 'Funds deducted successfully',
-                    newBalance: user.walletBalance,
-                    transaction: transaction[0]
-                });
-
-            } catch (error) {
-                await session.abortTransaction();
-                session.endSession();
-                res.status(500).json({ message: error.message });
+            if (user.pushTokens && user.pushTokens.length > 0) {
+                await sendPushNotification(
+                    user.pushTokens,
+                    'Wallet Debit Alert',
+                    `₦${amount.toLocaleString()} has been deducted from your wallet by admin. Reason: ${reason}`
+                );
             }
-        };
 
-        module.exports = {
-            getDashboardStats,
-            getAllUsers,
-            getAllOrders,
-            getUserById,
-            getOrderById,
-            banUser,
-            updateUserRole,
-            getAllMarketItems,
-            getMarketItemById,
-            deleteMarketItem,
-            getAllHousingListings,
-            getHousingListingById,
-            verifyHousingListing,
-            deleteHousingListing,
-            getAllElections,
-            getElectionById,
-            createElection,
-            updateElectionStatus,
-            deleteElection,
-            getAllPosts,
-            getPostById,
-            deletePost,
-            getAllElectionNews,
-            getElectionNewsById,
-            createElectionNews,
-            updateElectionNews,
-            deleteElectionNews,
-            updateOrder,
-            updateMarketItem,
-            getAllAppeals,
-            updateAppealStatus,
-            deductUserBalance
-        };
+            const io = req.app.get('io');
+            if (io) {
+                io.emit('wallet:updated', { userId: user._id, balance: user.walletBalance });
+            }
+        } catch (notifError) {
+            console.error('Notification error:', notifError);
+        }
+
+        res.json({
+            message: 'Funds deducted successfully',
+            newBalance: user.walletBalance,
+            transaction: transaction[0]
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = {
+    getDashboardStats,
+    getAllUsers,
+    getAllOrders,
+    getUserById,
+    getOrderById,
+    banUser,
+    updateUserRole,
+    getAllMarketItems,
+    getMarketItemById,
+    deleteMarketItem,
+    getAllHousingListings,
+    getHousingListingById,
+    verifyHousingListing,
+    deleteHousingListing,
+    getAllElections,
+    getElectionById,
+    createElection,
+    updateElectionStatus,
+    deleteElection,
+    getAllPosts,
+    getPostById,
+    deletePost,
+    getAllElectionNews,
+    getElectionNewsById,
+    createElectionNews,
+    updateElectionNews,
+    deleteElectionNews,
+    updateOrder,
+    updateMarketItem,
+    getAllAppeals,
+    updateAppealStatus,
+    deductUserBalance
+};
