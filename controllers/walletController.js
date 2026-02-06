@@ -223,6 +223,11 @@ const transfer = async (req, res) => {
                 transactionId: senderTx[0]._id
             });
 
+            // Update conversation last message
+            conv.lastMessage = chatMsg.content;
+            conv.lastMessageAt = Date.now();
+            await conv.save();
+
             const populatedChatMsg = await Message.findById(chatMsg._id).populate('transactionId');
 
             const io = req.app.get('io');
