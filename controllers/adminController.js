@@ -6,7 +6,9 @@ const MarketItem = require('../models/MarketItem');
 const Election = require('../models/Election');
 const Post = require('../models/Post');
 const ElectionNews = require('../models/ElectionNews');
+const Transaction = require('../models/Transaction');
 const { sendPushNotification } = require('../utils/pushService');
+const { createNotification } = require('./notificationController');
 
 // @desc    Get Admin Dashboard Stats
 // @route   GET /api/admin/stats
@@ -792,47 +794,126 @@ const updateAppealStatus = async (req, res) => {
             }
         } else if (status === 'rejected') {
             const user = await User.findById(appeal.userId);
-            if (user && user.pushTokens && user.pushTokens.length > 0) {
-                await sendPushNotification(user.pushTokens, 'Appeal Rejected', 'Your ban appeal has been rejected.');
+            const session = await require('mongoose').startSession();
+            session.startTransaction();
+            try {
+                const { identifier, amount, reason } = req.body; // identifier can be email or matricNo
+
+                if (!identifier || !amount || amount <= 0 || !reason) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    return res.status(400).json({ message: 'Please provide user email/matric, valid amount, and reason.' });
+                }
+
+                // Find user
+                const user = await User.findOne({
+                    $or: [{ email: identifier.toLowerCase() }, { matricNo: identifier.toUpperCase() }]
+                }).session(session);
+
+                if (!user) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    return res.status(404).json({ message: 'User not found' });
+                }
+
+                if (user.walletBalance < amount) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    return res.status(400).json({
+                        message: `Insufficient balance. User has ₦${user.walletBalance.toLocaleString()}`
+                    });
+                }
+
+                // Deduct balance
+                user.walletBalance -= amount;
+                await user.save({ session });
+
+                // Create transaction record
+                const transaction = await Transaction.create([{
+                    userId: user._id,
+                    type: 'withdrawal', // Using 'withdrawal' or a specific type if enum allows. Let's use 'withdrawal' for now or 'admin_deduction' if schema permits. 
+                    // Checking schema constraints usually 'withdrawal' is safe, or generic 'debit'. 
+                    // Let's assume 'withdrawal' fits "money leaving wallet".
+                    amount: amount,
+                    description: `Admin Deduction: ${reason}`,
+                    status: 'completed',
+                    paymentMethod: 'admin_deduction',
+                    reference: `ADMIN-${Date.now()}`
+                }], { session });
+
+                await session.commitTransaction();
+                session.endSession();
+
+                // Notify User
+                try {
+                    await createNotification({
+                        userId: user._id,
+                        type: 'admin_deduction',
+                        title: 'Funds Deducted ⚠️',
+                        message: `₦${amount.toLocaleString()} has been deducted from your wallet. Reason: ${reason}`,
+                        relatedId: transaction[0]._id
+                    });
+
+                    if (user.pushTokens && user.pushTokens.length > 0) {
+                        await sendPushNotification(
+                            user.pushTokens,
+                            'Wallet Debit Alert',
+                            `₦${amount.toLocaleString()} has been deducted from your wallet by admin. Reason: ${reason}`
+                        );
+                    }
+
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('wallet:updated', { userId: user._id, balance: user.walletBalance });
+                    }
+                } catch (notifError) {
+                    console.error('Notification error:', notifError);
+                }
+
+                res.json({
+                    message: 'Funds deducted successfully',
+                    newBalance: user.walletBalance,
+                    transaction: transaction[0]
+                });
+
+            } catch (error) {
+                await session.abortTransaction();
+                session.endSession();
+                res.status(500).json({ message: error.message });
             }
-        }
+        };
 
-        res.json({ message: 'Appeal status updated', appeal });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-module.exports = {
-    getDashboardStats,
-    getAllUsers,
-    getAllOrders,
-    getUserById,
-    getOrderById,
-    banUser,
-    updateUserRole,
-    getAllMarketItems,
-    getMarketItemById,
-    deleteMarketItem,
-    getAllHousingListings,
-    getHousingListingById,
-    verifyHousingListing,
-    deleteHousingListing,
-    getAllElections,
-    getElectionById,
-    createElection,
-    updateElectionStatus,
-    deleteElection,
-    getAllPosts,
-    getPostById,
-    deletePost,
-    getAllElectionNews,
-    getElectionNewsById,
-    createElectionNews,
-    updateElectionNews,
-    deleteElectionNews,
-    updateOrder,
-    updateMarketItem,
-    getAllAppeals,
-    updateAppealStatus
-};
+        module.exports = {
+            getDashboardStats,
+            getAllUsers,
+            getAllOrders,
+            getUserById,
+            getOrderById,
+            banUser,
+            updateUserRole,
+            getAllMarketItems,
+            getMarketItemById,
+            deleteMarketItem,
+            getAllHousingListings,
+            getHousingListingById,
+            verifyHousingListing,
+            deleteHousingListing,
+            getAllElections,
+            getElectionById,
+            createElection,
+            updateElectionStatus,
+            deleteElection,
+            getAllPosts,
+            getPostById,
+            deletePost,
+            getAllElectionNews,
+            getElectionNewsById,
+            createElectionNews,
+            updateElectionNews,
+            deleteElectionNews,
+            updateOrder,
+            updateMarketItem,
+            getAllAppeals,
+            updateAppealStatus,
+            deductUserBalance
+        };

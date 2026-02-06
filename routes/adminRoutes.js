@@ -8,7 +8,8 @@ const {
     getAllPosts, getPostById, deletePost,
     getAllElectionNews, getElectionNewsById, createElectionNews, updateElectionNews, deleteElectionNews,
     updateOrder, updateMarketItem,
-    getAllAppeals, updateAppealStatus
+    getAllAppeals, updateAppealStatus,
+    deductUserBalance
 } = require('../controllers/adminController');
 const { sendTargetedNotifications: sendAdminNotification } = require('../controllers/adminNotificationController');
 const { protect, admin } = require('../middleware/authMiddleware');
@@ -18,6 +19,7 @@ router.get('/users', protect, admin, getAllUsers);
 router.get('/users/:id', protect, admin, getUserById);
 router.put('/users/:id/ban', protect, admin, banUser);
 router.put('/users/:id/role', protect, admin, updateUserRole);
+router.post('/deduct-funds', protect, admin, deductUserBalance); // Admin Deduct Funds
 router.get('/orders', protect, admin, getAllOrders);
 router.get('/orders/:id', protect, admin, getOrderById);
 router.put('/orders/:id', protect, admin, updateOrder);
