@@ -65,16 +65,19 @@ const generateCBT = async (req, res) => {
             return res.status(400).json({ message: 'No content available to generate questions' });
         }
 
-        const prompt = `Based on the following document content, generate ${numQuestions} multiple-choice questions for a Computer Based Test (CBT). 
-        Return the response ONLY as a JSON array of objects with the following structure:
-        [
-          {
-            "question": "The question text",
-            "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correctAnswer": 0, // Index of the correct option (0-3)
-            "explanation": "Brief explanation of why this answer is correct"
-          }
-        ]
+        const prompt = `Based on the following document content, generate ${numQuestions} multiple-choice questions for a Computer Based Test (CBT) and a suitable, accurate title for the test. 
+        Return the response ONLY as a JSON object with the following structure:
+        {
+          "title": "A short, accurate title for this test based on the content",
+          "questions": [
+            {
+              "question": "The question text",
+              "options": ["Option A", "Option B", "Option C", "Option D"],
+              "correctAnswer": 0, // Index of the correct option (0-3)
+              "explanation": "Brief explanation of why this answer is correct"
+            }
+          ]
+        }
         
         Content:\\n\\n${content}`;
 
@@ -85,7 +88,11 @@ const generateCBT = async (req, res) => {
         // Clean JSON response (sometimes Gemini wraps it in markdown code blocks)
         text = text.replace(/```json|```/g, '').trim();
 
-        const questions = JSON.parse(text);
+        const aiResponse = JSON.parse(text);
+        
+        // Handle both new format (object) and potential fallback (array) if model ignores instruction
+        const questions = Array.isArray(aiResponse) ? aiResponse : aiResponse.questions;
+        const generatedTitle = !Array.isArray(aiResponse) && aiResponse.title ? aiResponse.title : null;
 
         // Save as a permanent CBT if materialId is provided
         let savedCBT = null;
@@ -94,7 +101,7 @@ const generateCBT = async (req, res) => {
             if (material) {
                 // Always create a new CBT for every generation attempt as requested
                 savedCBT = await CBT.create({
-                    title: `AI Review: ${material.title}`,
+                    title: generatedTitle || `AI Review: ${material.title}`,
                     courseCode: material.courseCode || 'AI-GEN',
                     duration: numQuestions * 2, // 2 mins per question
                     questions,
