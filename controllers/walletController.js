@@ -706,21 +706,75 @@ const verifyTransactionCallback = async (req, res) => {
         const html = `
             <html>
                 <head>
-                    <title>Payment Successful</title>
+                    <title>Payment Complete</title>
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                     <style>
-                        body { display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; text-align: center; }
-                        .container { padding: 20px; }
-                        h1 { color: #10b981; }
+                        body { 
+                            display: flex; 
+                            justify-content: center; 
+                            align-items: center; 
+                            height: 100vh; 
+                            margin: 0;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+                            background-color: #f9fafb;
+                            color: #1f2937;
+                        }
+                        .container { 
+                            padding: 40px; 
+                            background: white;
+                            border-radius: 24px;
+                            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                            text-align: center;
+                            max-width: 90%;
+                            width: 320px;
+                        }
+                        .icon {
+                            width: 64px;
+                            height: 64px;
+                            background-color: #d1fae5;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            margin: 0 auto 24px;
+                        }
+                        .checkmark {
+                            color: #059669;
+                            font-size: 32px;
+                        }
+                        h1 { 
+                            font-size: 20px; 
+                            font-weight: 700; 
+                            margin: 0 0 12px;
+                            color: #111827;
+                        }
+                        p { 
+                            font-size: 15px; 
+                            line-height: 1.5;
+                            color: #6b7280;
+                            margin: 0 0 24px;
+                        }
+                        .instruction {
+                            background-color: #f3f4f6;
+                            padding: 12px;
+                            border-radius: 12px;
+                            font-size: 14px;
+                            font-weight: 500;
+                            color: #374151;
+                        }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>Payment Successful!</h1>
-                        <p>You can now close this window and return to the Dorm app.</p>
-                        <script>
-                            // detailed verification could happen here
-                        </script>
+                        <div class="icon">
+                            <span class="checkmark">✓</span>
+                        </div>
+                        <h1>Payment Complete</h1>
+                        <p>We've received your payment confirmation.</p>
+                        <div class="instruction">
+                            Return to the app and tap<br>
+                            <strong>"I have completed payment"</strong>
+                        </div>
                     </div>
                 </body>
             </html>
