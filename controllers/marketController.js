@@ -55,6 +55,10 @@ const getItems = async (req, res) => {
 
         // Attach vendor statistics
         const itemsWithStats = await Promise.all(items.map(async (item) => {
+            if (!item.ownerId) {
+                console.warn(`⚠️ [Backend] Item ${item._id} has no owner! Skipping stats.`);
+                return item.toObject();
+            }
             const reviews = await Review.find({ targetId: item.ownerId._id, targetType: 'vendor' });
             const avgRating = reviews.length > 0
                 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
