@@ -374,6 +374,36 @@ const deleteMessage = async (req, res) => {
         message.mediaUrl = null;
         await message.save();
 
+        // Update conversation's lastMessage if this was the last message
+        const conversation = await Conversation.findById(message.conversationId);
+        if (conversation) {
+            // Find the most recent non-deleted message
+            const lastValidMessage = await Message.findOne({
+                conversationId: message.conversationId,
+                isDeleted: { $ne: true }
+            })
+                .sort({ createdAt: -1 })
+                .limit(1);
+
+            if (lastValidMessage) {
+                // Update with the most recent valid message
+                let previewText = lastValidMessage.content || '';
+                if (lastValidMessage.type === 'image') previewText = 'Sent an image';
+                if (lastValidMessage.type === 'voice') previewText = 'Sent a voice note';
+                if (lastValidMessage.type === 'transfer') previewText = `₦${lastValidMessage.transactionId?.amount || 0}`;
+                if (lastValidMessage.type === 'market_item') previewText = 'Sent a market item';
+
+                conversation.lastMessage = previewText;
+                conversation.lastMessageAt = lastValidMessage.createdAt;
+            } else {
+                // No valid messages left
+                conversation.lastMessage = '';
+                conversation.lastMessageAt = conversation.createdAt;
+            }
+
+            await conversation.save();
+        }
+
         const io = req.app.get('io');
         if (io) {
             io.to(message.conversationId.toString()).emit('message:delete', {
