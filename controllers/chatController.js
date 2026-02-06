@@ -223,11 +223,11 @@ const sendMessage = async (req, res) => {
             User.findById(receiverId)
         ]);
 
-        if (sender.blockedUsers.includes(receiverId)) {
+        if (sender && sender.blockedUsers && sender.blockedUsers.includes(receiverId)) {
             return res.status(400).json({ message: 'You have blocked this user' });
         }
 
-        if (receiver.blockedUsers.includes(req.user._id)) {
+        if (receiver && receiver.blockedUsers && receiver.blockedUsers.includes(req.user._id)) {
             return res.status(400).json({ message: 'You cannot message this user' });
         }
 
