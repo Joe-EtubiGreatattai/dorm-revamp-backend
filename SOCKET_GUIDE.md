@@ -56,7 +56,7 @@ npm install socket.io-client
 // utils/socket.ts
 import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:5001'; // Change in production
+const SOCKET_URL = 'https://dorm-revamp-backend.onrender.com'; // Change in production
 
 let socket: Socket | null = null;
 
@@ -287,7 +287,7 @@ export default function ChatScreen() {
 
 Test socket connections using the Socket.io admin UI or browser console:
 ```javascript
-const socket = io('http://localhost:5001', {
+const socket = io('https://dorm-revamp-backend.onrender.com', {
     auth: { token: 'YOUR_JWT_TOKEN' }
 });
 

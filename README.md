@@ -41,7 +41,7 @@ npm start
 ### Authentication
 ```bash
 # Register
-curl -X POST http://localhost:5001/api/auth/register \
+curl -X POST https://dorm-revamp-backend.onrender.com/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test User",
@@ -51,7 +51,7 @@ curl -X POST http://localhost:5001/api/auth/register \
   }'
 
 # Login
-curl -X POST http://localhost:5001/api/auth/login \
+curl -X POST https://dorm-revamp-backend.onrender.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@university.edu",
@@ -62,11 +62,11 @@ curl -X POST http://localhost:5001/api/auth/login \
 ### Wallet (Requires Auth Token)
 ```bash
 # Get Balance
-curl -X GET http://localhost:5001/api/wallet/balance \
+curl -X GET https://dorm-revamp-backend.onrender.com/api/wallet/balance \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 
 # Top Up
-curl -X POST http://localhost:5001/api/wallet/topup \
+curl -X POST https://dorm-revamp-backend.onrender.com/api/wallet/topup \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -78,11 +78,11 @@ curl -X POST http://localhost:5001/api/wallet/topup \
 ### Posts
 ```bash
 # Get Feed
-curl -X GET http://localhost:5001/api/posts/feed \
+curl -X GET https://dorm-revamp-backend.onrender.com/api/posts/feed \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 
 # Create Post
-curl -X POST http://localhost:5001/api/posts \
+curl -X POST https://dorm-revamp-backend.onrender.com/api/posts \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{

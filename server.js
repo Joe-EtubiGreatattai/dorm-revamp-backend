@@ -19,10 +19,13 @@ const allowedOrigins = [
     'http://192.168.0.130:8081',
     'http://localhost:8081',
     'http://localhost:8080',
+    'http://localhost:5173',
     'http://192.168.0.127:8081',
     'exp://192.168.0.130:8081',
     'exp://192.168.0.127:8081',
-    'https://dorm-revamp-admin.vercel.app'
+    'https://dorm-revamp-admin.vercel.app',
+    'https://dorm.com.ng',
+    'https://www.dorm.com.ng',
 ];
 
 // Socket.io setup

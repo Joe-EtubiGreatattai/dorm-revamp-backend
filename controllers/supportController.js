@@ -1,5 +1,7 @@
 const FAQ = require('../models/FAQ');
 const SupportTicket = require('../models/SupportTicket');
+const ContactMessage = require('../models/ContactMessage');
+const sendEmail = require('../utils/sendEmail');
 
 // === FAQ Controllers ===
 
@@ -177,5 +179,57 @@ exports.closeTicket = async (req, res) => {
         res.json(ticket);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+// === Public Contact Form ===
+
+exports.submitContactForm = async (req, res) => {
+    try {
+        const { name, email, subject, message } = req.body;
+
+        if (!name || !email || !subject || !message) {
+            return res.status(400).json({ message: 'All fields are required' });
+        }
+
+        const contact = await ContactMessage.create({ name, email, subject, message });
+
+        // Notify admin
+        await sendEmail({
+            email: process.env.SMTP_EMAIL,
+            subject: `[Contact Form] ${subject}`,
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+                    <h2 style="color:#FF4500">New Contact Form Submission</h2>
+                    <p><strong>Name:</strong> ${name}</p>
+                    <p><strong>Email:</strong> ${email}</p>
+                    <p><strong>Subject:</strong> ${subject}</p>
+                    <hr/>
+                    <p style="white-space:pre-wrap">${message}</p>
+                </div>
+            `,
+        });
+
+        // Confirmation to sender
+        await sendEmail({
+            email,
+            subject: 'We received your message – Dorm Support',
+            html: `
+                <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+                    <h2 style="color:#FF4500">Thanks for reaching out, ${name}!</h2>
+                    <p>We received your message and will get back to you within 24–48 hours.</p>
+                    <hr/>
+                    <p><strong>Your message:</strong></p>
+                    <p style="white-space:pre-wrap;color:#555">${message}</p>
+                    <br/>
+                    <p style="color:#888;font-size:12px">— The Dorm Team</p>
+                </div>
+            `,
+        });
+
+        res.status(201).json({ message: 'Message sent successfully', id: contact._id });
+    } catch (error) {
+        console.error('❌ [Contact Form]', error);
+        res.status(500).json({ message: 'Failed to send message. Please try again.' });
     }
 };

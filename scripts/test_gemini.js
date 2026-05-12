@@ -1,7 +1,7 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const BASE_URL = 'http://localhost:5001/api/ai';
+const BASE_URL = 'https://dorm-revamp-backend.onrender.com/api/ai';
 
 // Note: You need a valid JWT token to test protected routes.
 // For this test, you'll need to manually paste a token from your logged-in session.
